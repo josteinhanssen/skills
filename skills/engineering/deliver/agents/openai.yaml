@@ -1,0 +1,5 @@
+interface:
+  display_name: "Deliver"
+  short_description: "Plan, spec, run and close a batch of tickets with sub-agents"
+policy:
+  allow_implicit_invocation: false
