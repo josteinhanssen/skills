@@ -39,7 +39,7 @@ Review rounds cost as much as implementation, and the round count came from judg
 
 Not used: larger PRs (they cost more review rounds) and skipping review for "mechanical" tickets (reviewers found a real coverage loss on nearly every PR of the baseline wave, small-model tickets included).
 
-The metric is tokens per merged ticket, split into plan, implement, review and orchestrate, reported raw and cost-weighted (cache reads about 0.1×, cache writes about 2×, output about 5×), with quality alongside as findings per PR and defects found after merge. Target against the baseline: half the review bucket and most implementation on the small model, which is roughly a 50 to 60% cut if quality holds.
+The metric is tokens per merged ticket, split into plan, implement, review and orchestrate, reported raw and cost-weighted (cache reads about 0.1×, cache writes about 2×, output about 5×), with quality alongside as findings per PR and defects found after merge. `scripts/cost.py` computes it by summing every turn's usage block from the session transcripts, which is what is billed; those figures are much larger than the "sub-agent tokens" a completion notice shows, so a baseline is only comparable when it was computed with the same script. Target against the baseline: half the review bucket and most implementation on the small model, which is roughly a 50 to 60% cut if quality holds.
 
 ### Commands
 
