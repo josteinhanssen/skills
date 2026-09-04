@@ -13,13 +13,14 @@ Usage (run from the repository root):
 Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null).
 The file is small and rewritten whole; every write records `updatedAt`.
 """
-from __future__ KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report"}
-import annotations
+from __future__ import annotations
 
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report"}
 
 STATE = Path(".deliver/state.json")
 
