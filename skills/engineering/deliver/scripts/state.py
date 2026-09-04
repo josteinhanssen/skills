@@ -13,7 +13,8 @@ Usage (run from the repository root):
 Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null).
 The file is small and rewritten whole; every write records `updatedAt`.
 """
-from __future__ import annotations
+from __future__ KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report"}
+import annotations
 
 import json
 import sys
@@ -46,11 +47,13 @@ def parse_value(raw: str):
         return raw
 
 
-def apply_sets(target: dict, pairs: list[str]) -> None:
+def apply_sets(target: dict, pairs: list[str], warn_unknown: bool = False) -> None:
     for pair in pairs:
         if "=" not in pair:
             sys.exit(f"expected key=value, got {pair!r}")
         key, raw = pair.split("=", 1)
+        if warn_unknown and key not in KNOWN_TICKET_KEYS:
+            print(f"warning: {key} is not a key cost.py or status reads (see reference/run.md, State keys)", file=sys.stderr)
         target[key] = parse_value(raw)
 
 
@@ -90,7 +93,7 @@ def cmd_ticket(args: list[str]) -> None:
          "rounds": 0, "rulings": 0, "lastReport": None, "merged": None},
     )
     if action == "set":
-        apply_sets(entry, rest)
+        apply_sets(entry, rest, warn_unknown=True)
         save(state)
         print(json.dumps({ticket: entry}, indent=2, ensure_ascii=False))
     elif action == "get":

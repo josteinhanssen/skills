@@ -25,7 +25,7 @@ Reviewers and the judge are spawned with `fork_turns: "none"` and receive only: 
 Every agent ends every turn with exactly one report, written to its report file and returned as its final message:
 
 - `READY-FOR-RUN` (implementer): work, targeted tests, mutation proofs, bookkeeping and self-review are done; it needs a grant for an exclusive resource named in the spec before it can finish. Includes: branch, head, what ran and its totals, which resource and why.
-- `READY-TO-MERGE` (implementer): PR id and head, reviewer state (rounds, resolved counts), the totals the spec's acceptance checks require, files touched, deviations from the spec, anything reported but not fixed. Nothing is claimed that was not run on the final head.
+- `READY-TO-MERGE` (implementer): PR id and head, reviewer state (rounds, resolved counts, and the agent id of every reviewer it spawned, per pass, so the orchestrator can record them for cost attribution), the totals the spec's acceptance checks require, files touched, deviations from the spec, anything reported but not fixed. Nothing is claimed that was not run on the final head.
 - `BLOCKED` (any role): the concrete decision needed, what was tried, the options with a recommendation. Never a question that the spec already answers.
 - `VERDICT` (reviewers, plan-reviewer): findings under fixed headings (Blocking, Should-fix, Nit, Verified clean), each with file and line, under 400 words; the same headings on incremental passes with "closed" or "still open" per earlier finding.
 - `RULING` (judge): the decision, the reason in two sentences, and the exact text to append to the spec.

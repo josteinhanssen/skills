@@ -52,3 +52,17 @@ Per the profile: after each merge, or once on the batch head before `close`. The
 ## Output at the end of `run`
 
 The state table (ticket, PR, head, merged, rounds, rulings) and the list of follow-ups reported but not fixed, each with its ticket id.
+
+## State keys the scripts read
+
+`scripts/state.py ticket <id> set key=value ...` accepts any key, but `cost.py` and `status` attribute by these names only; use them exactly:
+
+| Key | Set by | Read by |
+|---|---|---|
+| `spec`, `model`, `phase`, `pr`, `head`, `merged`, `sandbox`, `rounds`, `rulings`, `findingsAfterMerge` | orchestrator | `status`, `cost.py` (rounds, findings) |
+| `agent` | orchestrator at spawn | `cost.py` as the implementation cost |
+| `plannerAgents`, `reviewerAgents`, `judgeAgents`, `implementerAgents` (lists) | orchestrator when it spawns them, or from the READY-TO-MERGE report when the implementer spawned the reviewers | `cost.py` per phase |
+
+Record reviewer ids the moment you learn them; an id missing from state lands in the unassigned bucket and the ticket's review cost reads as zero.
+
+An invariant that reports FAILED with a log that has no result line (the runner started and stopped) is a broken run, not a failing test: rerun it once on the same head before treating it as a failure, and say in the log which it was.
