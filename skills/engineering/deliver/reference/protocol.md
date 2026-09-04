@@ -40,6 +40,7 @@ The orchestrator runs the authoritative verification itself, on the merged head,
 
 ## Review rounds
 
+0. Reviewer verdicts travel as files, never only as notifications. A reviewer writes its VERDICT to `.deliver/reports/<ticket>-<axis>-<pass>.md` before returning it; the implementer waits with `scripts/report.py --wait` on those paths (or polls the directory) instead of idling on a notification that may reach the orchestrator rather than the implementer. A completion notice that says only "waiting for the reviewers" is a defect in the brief, not a state.
 1. After the first push, the orchestrator (or the implementer, if the profile says so) spawns the Standards and the Spec reviewer with refs only.
 2. The implementer takes every valid finding, replies with a reason to invalid ones, pushes once, and sends both reviewers the incremental range.
 3. After each reviewer's second full pass, the orchestrator declares the closing round: one push, confirm-only passes. Trivial residue (unused imports, docstrings, counts) is pushed without another round and the orchestrator diffs that delta at merge.

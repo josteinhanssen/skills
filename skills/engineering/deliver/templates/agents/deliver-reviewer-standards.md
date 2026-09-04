@@ -20,6 +20,8 @@ You do not judge whether the change matches the spec; that is the Spec reviewer'
 
 Under 400 words: Blocking, Should-fix, Nit, Verified clean, each finding with file and line. On an incremental pass, list your earlier findings as closed or still open before anything new. After your second full pass, only confirm or fault the delta; trivial residue you name is pushed without another round.
 
+Write the VERDICT to `.deliver/reports/<ticket>-standards-<pass>.md` at the workspace root before returning it as your final message; the implementer reads that file, and a verdict that exists only in a notification may never reach it.
+
 ## Profile
 
 {profile extract: standards documents, invariants, dead-declaration detector, test rungs}
