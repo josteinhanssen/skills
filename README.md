@@ -137,6 +137,12 @@ Cheap acceptance commands re-run on every merged head; the authoritative run per
 
 Four small tickets from the originating project, direct PRs to the integration branch with the external review tool per PR, large-model orchestrator. Success criteria, written into the delivery log before the trial starts: cost per merged ticket at or below half of the baseline's large-model tickets; zero findings after merge; at most two review rounds per PR. A small-model orchestrator is a second, separate experiment.
 
+#### Trial result (wave-n-trial, 2026-09-04)
+
+Four tickets, all merged with zero post-merge findings and at most two review rounds each. Weighted tokens (input 1x, cache reads 0.1x, cache writes 2x, output 5x): MSITE-232 12.4M, MSITE-236 9.9M, MSITE-237 14.5M, MSITE-233 31.7M, plus 13.8M of batch-level planning. Against the wave N baseline the large ticket came in a third cheaper than its nearest comparable (MSITE-226, 47.0M, same review-round count), and the small-model implementations cost a third of the comparable large-model ones in raw tokens, at one review round instead of two. The small tickets cost more than their baseline counterparts, because a spec phase of 35-53M raw tokens (two review passes) sat on top of a 20-24M implementation. The lever is the planning phase, not the implementer: a single confirm pass for tickets the plan reviewer already rated small would take most of the gap out.
+
+Defects found in the skill during the trial, fixed: reviewer verdicts delivered only as notifications (now files the implementer polls); reviewer ids unknown to the orchestrator when the implementer spawns reviewers (now listed in READY-TO-MERGE); the state keys `cost.py` attributes by were undocumented (now in `reference/run.md`, and `state.py` warns on others); a broken invariant run (runner stopped, no result line) read as a failure (rerun-once rule).
+
 ### Repository layout
 
 ```
