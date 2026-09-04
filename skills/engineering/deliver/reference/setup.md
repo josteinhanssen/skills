@@ -36,4 +36,4 @@ Create `.deliver/` with `state.json` (from `scripts/state.py init`), `rulings/`,
 
 List what was discovered, what was asked, the profile path, the installed agents, and anything the user should verify by hand (a CLI not signed in, a pipeline id guessed from a name).
 
-Say plainly that the role agents register when a session starts: the session that ran `setup` cannot spawn them by name until it is restarted. Until then a phase may run its roles as general-purpose agents with the template body pasted into the brief and the model passed explicitly, which loses the template's `effort` setting; say so in the delivery log when it happens.
+Say plainly that newly installed role agents take a short while to register in a running session (observed: not available on the first spawn attempt, available a few minutes later without a restart). Retry the spawn by name before falling back; if a phase must start at once, run its role as a general-purpose agent with the template body pasted into the brief and the model passed explicitly, which loses the template's `effort` setting, and say so in the delivery log.
