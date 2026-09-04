@@ -67,3 +67,5 @@ Run and record on the head before spawning reviewers; a reviewer's time is not s
 ## Sandbox conventions
 
 Each implementer works in its own worktree from the profile's pattern, on a fresh branch from the base the orchestrator names, with the ports, databases and cache directories the brief assigns. It never touches another worktree, never installs dependencies through a shared symlink, stages explicit paths only, and leaves a clean tree at the pushed head when it stands down. The orchestrator removes the worktree and both branches after verifying the merge.
+
+Planners and reviewers that need a compiled base (to run a compiler flag, a listing, a probe) get a scratch tree of their own, named after the agent, or treat a shared base tree as read-only: verify with `git show <ref>:<path>` and `git grep <ref>`, never by editing the shared tree. Two planners sharing one scratch tree in the same batch produced a stray probe file that the other planner had to revert; a measurement taken from a tree another agent is writing to is not a measurement.
