@@ -39,6 +39,8 @@ Review rounds cost as much as implementation, and the round count came from judg
 
 Not used: larger PRs (they cost more review rounds) and skipping review for "mechanical" tickets (reviewers found a real coverage loss on nearly every PR of the baseline wave, small-model tickets included).
 
+Recomputed with `scripts/cost.py` (per-turn usage, the billed basis), the same wave looks different: implementation is over 80% of weighted cost on every ticket and review 10 to 20%, because cost scales with turns times context size and a long implementation run drags a large context through hundreds of turns. A small-model ticket that ran 400 tool calls cost more than a large-model ticket that ran 150. So the first lever is the number of turns and the size of the context an implementer carries (a complete spec, targeted reads, quiet commands, fresh reviewers), the second is the model, and the third is the round cap.
+
 The metric is tokens per merged ticket, split into plan, implement, review and orchestrate, reported raw and cost-weighted (cache reads about 0.1×, cache writes about 2×, output about 5×), with quality alongside as findings per PR and defects found after merge. `scripts/cost.py` computes it by summing every turn's usage block from the session transcripts, which is what is billed; those figures are much larger than the "sub-agent tokens" a completion notice shows, so a baseline is only comparable when it was computed with the same script. Target against the baseline: half the review bucket and most implementation on the small model, which is roughly a 50 to 60% cut if quality holds.
 
 ### Commands
