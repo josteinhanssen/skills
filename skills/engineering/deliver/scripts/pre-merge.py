@@ -106,11 +106,13 @@ def main() -> None:
     if not base or not head:
         print(f"refs: base={base} head={head} (unresolved)")
         sys.exit(1)
-    print(f"refs: base {base} head {head}")
+    merge_base = git(repo, "merge-base", args.base, args.head).strip()[:8]
+    moved = merge_base != base
+    print(f"refs: base {base} head {head} merge-base {merge_base}" + (" (the base has moved since the branch point; the diff below is against the merge-base, and the host merges three-way)" if moved else ""))
 
-    # 2. changed files against the spec
-    changed = [line for line in git(repo, "diff", "--name-only", args.base, args.head).split("\n") if line]
-    status = git(repo, "diff", "--name-status", args.base, args.head).strip()
+    # 2. changed files against the spec (three-dot: the PR's own changes since it branched)
+    changed = [line for line in git(repo, "diff", "--name-only", f"{args.base}...{args.head}").split("\n") if line]
+    status = git(repo, "diff", "--name-status", f"{args.base}...{args.head}").strip()
     print(f"changed files ({len(changed)}):\n{status}")
     spec_text = Path(args.spec).read_text(encoding="utf-8")
     named = set(re.findall(r"`([^`\s]+)`", spec_text))
