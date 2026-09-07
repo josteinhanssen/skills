@@ -89,3 +89,9 @@ Read by `/deliver`; written by `/deliver setup`. Every field is a fact or a comm
 ## Baseline for cost comparison
 
 - {figures or "none"}
+
+## Machine resources
+
+- Worker cap for an agent's multi-file test run (e.g. `--maxWorkers=4`); the orchestrator's own checks keep the defaults because they run alone.
+- Concurrency probes (N suites at once): the grant name, the cap on N × workers, and the rule that no other agent starts a multi-file run or a production build while the grant file exists.
+- Measured limits: memory and CPU of the workstation, and what exhausted it last time.

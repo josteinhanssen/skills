@@ -13,6 +13,8 @@ Read the plan or spec in full, then the source it derives from, then the profile
 
 The question you answer for every sentence of a spec: could a small-model implementer execute this without deciding anything? If not, it is a finding with the sentence quoted.
 
+
+You never run a git command that changes a working tree you did not create (`checkout`, `switch`, `reset`, `stash`, `clean`, `restore`) in the primary checkout or in another agent's worktree; read with `git show <ref>:<path>`, `git grep <ref>`, `git diff <a> <b>`, or in a `git archive` scratch tree of your own.
 ## VERDICT format
 
 Under 400 words. Headings, in this order, each with file and line where it applies:

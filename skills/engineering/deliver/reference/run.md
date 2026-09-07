@@ -4,7 +4,7 @@ Orchestrates a batch of specced tickets to merged, verified PRs. This session is
 
 ## 0. Resume or start
 
-Read `.deliver/state.json`. If the batch exists, this is a resume: for every ticket not merged, check whether its agent is alive (a report file newer than the last state update, or a running task); respawn dead agents from the spec and their last report, once. Otherwise start: record the base branch and head, the batch slug, the tickets and their specs.
+Read `.deliver/state.json`. If the batch exists, this is a resume: for every ticket not merged, check whether its agent is alive with the agent list (`ListAgents`; a transcript file is empty until the agent ends, so it proves nothing); respawn only agents the list shows as not running, from the spec and their last report, once, and never reset or clean their worktree in the respawn brief. Otherwise start: record the base branch and head, the batch slug, the tickets and their specs.
 
 ## 1. Schedule
 
@@ -22,7 +22,7 @@ Every agent turn ends with a report file. On each:
 - `READY-TO-MERGE`: run the merge checklist below.
 - `BLOCKED`: spawn the judge with the spec and the one question; append the RULING to `.deliver/rulings/<ticket>.md` and to the spec's Rulings section; resume the implementer with the ruling. Second BLOCKED on the same ticket: back to `spec`.
 - `VERDICT` from a reviewer that reaches the orchestrator instead of the implementer: relay it verbatim to the implementer with the round number.
-- Silence past the profile's threshold: check liveness; respawn once.
+- Silence past the profile's threshold: check liveness with the agent list; respawn once, only if the list shows the agent not running.
 
 ## 4. Merge checklist
 

@@ -70,7 +70,7 @@ def weighted(t: dict) -> float:
 
 
 def raw(t: dict) -> int:
-    return t["input"] + t["cache_read"] + t["cache_write"] + t["output"]
+    return int(round(t["input"] + t["cache_read"] + t["cache_write"] + t["output"]))
 
 
 def main() -> None:
@@ -93,31 +93,37 @@ def main() -> None:
     window = (batch.get("startedAt") or batch.get("createdAt"), batch.get("closedAt"))
 
     # agent id -> (ticket, phase)
-    mapping: dict[str, tuple[str, str]] = {}
+    # an agent shared by several tickets (one planner writing two specs) is split evenly between them
+    mapping: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    def add(agent: str, ticket: str, phase: str) -> None:
+        if (ticket, phase) not in mapping[agent]:
+            mapping[agent].append((ticket, phase))
     for agent in state.get("batch", {}).get("plannerAgents", []) or []:
-        mapping[agent] = ("(batch)", "plan")
+        add(agent, "(batch)", "plan")
     for ticket, entry in state.get("tickets", {}).items():
         if entry.get("agent"):
-            mapping[entry["agent"]] = (ticket, "implement")
+            add(entry["agent"], ticket, "implement")
         for agent in entry.get("implementerAgents", []) or []:
-            mapping[agent] = (ticket, "implement")
+            add(agent, ticket, "implement")
         for agent in entry.get("plannerAgents", []) or []:
-            mapping[agent] = (ticket, "plan")
+            add(agent, ticket, "plan")
         for agent in entry.get("reviewerAgents", []) or []:
-            mapping[agent] = (ticket, "review")
+            add(agent, ticket, "review")
         for agent in entry.get("judgeAgents", []) or []:
-            mapping[agent] = (ticket, "rulings")
+            add(agent, ticket, "rulings")
 
     per = defaultdict(lambda: defaultdict(lambda: {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "turns": 0}))
     for output in sorted(tasks.glob("*.output")):
         agent_id = output.stem
-        ticket, phase = mapping.get(agent_id, ("(unassigned)", agent_id))
-        totals = usage_of_file(output, window if ticket == "(unassigned)" else (None, None))
+        targets = mapping.get(agent_id) or [("(unassigned)", agent_id)]
+        totals = usage_of_file(output, window if targets[0][0] == "(unassigned)" else (None, None))
         if totals["turns"] == 0:
             continue
-        bucket = per[ticket][phase]
-        for key in bucket:
-            bucket[key] += totals[key]
+        share = len(targets)
+        for ticket, phase in targets:
+            bucket = per[ticket][phase]
+            for key in bucket:
+                bucket[key] += totals[key] / share if key != "turns" else totals[key]
 
     orchestrator = None
     jsonl = args.session_jsonl or batch.get("sessionJsonl")

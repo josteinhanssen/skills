@@ -30,13 +30,17 @@ Every agent ends every turn with exactly one report, written to its report file 
 - `VERDICT` (reviewers, plan-reviewer): findings under fixed headings (Blocking, Should-fix, Nit, Verified clean), each with file and line, under 400 words; the same headings on incremental passes with "closed" or "still open" per earlier finding.
 - `RULING` (judge): the decision, the reason in two sentences, and the exact text to append to the spec.
 
-An agent never idle-waits on the orchestrator. It ends the turn and is resumed with context intact, or respawned from files if the session died.
+An agent never idle-waits on the orchestrator. It ends the turn and is resumed with context intact, or respawned from files if the session died. An implementer that has spawned reviewers may end its turn; the harness wakes it when a child completes, so waiting on reviewers by ending the turn is allowed.
+
+Liveness is read from the agent list (the harness's `ListAgents`), never from transcript files: a running agent's task output file stays empty until it ends. Respawn only an agent the list shows as not running, and hand its worktree over as it stands; a respawn brief never resets, checks out or cleans a worktree (a live predecessor's staged work was destroyed that way once).
 
 ## Exclusive resources and grants
 
 The profile lists resources that must not run concurrently (an authoritative browser matrix, an armed backend suite, a shared database migration). An agent may not use one without a grant. A grant covers one run, not a phase; a re-run is a new request. While a grant is held, other agents defer multi-target runs of the same kind and continue with single-target checks.
 
 Grants travel as files, for the same reason verdicts do: the orchestrator may have no channel to resume an agent. `scripts/state.py grant <resource> <agent-id>` records the grant in the state file and writes `.deliver/grants/<resource>`; the agent that reported READY-FOR-RUN waits on that file with `scripts/wait-grant.sh <resource> <agent-id>` (bounded, 45 minutes by default) instead of ending its turn and hoping for a GO. `state.py release <resource>` removes the file when the agent's report shows the run is done. An implementer that runs an exclusive resource without a grant file naming it has deviated, and says so in its report.
+
+When the resource is free at spawn time, the orchestrator grants it in the brief (`state.py grant` before the spawn, one run) and tells the implementer to delete the grant file the moment the run ends; an agent waiting in-turn on a grant file cannot notify the orchestrator, so a grant issued later reaches it only through the file. While a grant file for a machine-wide resource (a contention probe, an armed suite) exists, no other agent starts a multi-file run of the same kind.
 
 The orchestrator runs the authoritative verification itself, on the merged head, at the profile's cadence. Agents run the cheap rung freely and the targeted rung only on what their spec names.
 
@@ -52,6 +56,7 @@ Implementation phase (PR review):
 3. After each reviewer's second full pass, the orchestrator declares the closing round: one push, confirm-only passes. Trivial residue (unused imports, docstrings, counts) is pushed without another round and the orchestrator diffs that delta at merge.
 4. Reviewer disagreement goes to the judge, not to the implementer.
 5. A finding that needs a design decision the spec did not make is a BLOCKED, not a fix.
+6. A BLOCKED whose answer is a wording defect in an acceptance check or a bookkeeping sentence (a command that cannot produce its stated pass shape, a count that contradicts its own block) is ruled by the orchestrator as a numbered ruling appended to the spec and to `.deliver/rulings/<ticket>.md`, without the judge; anything that touches design, scope or coverage still goes to the judge.
 
 ## Mechanical checks before review
 
@@ -75,5 +80,7 @@ Run and record on the head before spawning reviewers; a reviewer's time is not s
 ## Sandbox conventions
 
 Each implementer works in its own worktree from the profile's pattern, on a fresh branch from the base the orchestrator names, with the ports, databases and cache directories the brief assigns. It never touches another worktree, never installs dependencies through a shared symlink, stages explicit paths only, and leaves a clean tree at the pushed head when it stands down. The orchestrator removes the worktree and both branches after verifying the merge.
+
+Reviewers and planners never run a git command that changes a working tree they did not create: no `checkout`, `switch`, `reset`, `stash`, `clean` or `restore` in the primary checkout or another agent's worktree. They read with `git show <ref>:<path>`, `git grep <ref>`, `git diff <a> <b>`, or in a `git archive` scratch tree of their own.
 
 Planners and reviewers that need a compiled base (to run a compiler flag, a listing, a probe) get a scratch tree of their own, named after the agent, or treat a shared base tree as read-only: verify with `git show <ref>:<path>` and `git grep <ref>`, never by editing the shared tree. Two planners sharing one scratch tree in the same batch produced a stray probe file that the other planner had to revert; a measurement taken from a tree another agent is writing to is not a measurement.
