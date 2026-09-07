@@ -40,7 +40,7 @@ Checklist:
 
 ## Rounds
 
-Planner writes, reviewer verdicts, planner takes findings, reviewer confirms. Two passes, then the orchestrator either accepts or sends the plan back with the open findings as a BLOCKED to the user. The plan is approved by the user once; after that, `spec` and `run` do not ask again.
+Planner writes; the reviewer returns one VERDICT; the planner takes every finding; the orchestrator reads the planner's delta against the findings and closes them itself. A confirm pass on the delta is spawned only when the first pass had a Blocking finding. Open findings after that go to the user as a BLOCKED. The plan is approved by the user once; after that, `spec` and `run` do not ask again.
 
 ## Output
 

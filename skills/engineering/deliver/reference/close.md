@@ -24,7 +24,7 @@ On every ticket: the merge commit, the run-of-record figures relevant to it, and
 
 ## 6. Cost table
 
-`scripts/cost.py --batch <slug>` sums tokens per phase per ticket from the session files (orchestrator session, each agent's output file) and writes the table into the delivery log: raw and cost-weighted, with review rounds per PR and findings per PR beside them. Compare against the baseline the profile names, if any.
+`scripts/cost.py --batch <slug>` sums tokens per phase per ticket from the session files (each agent's output file, and the orchestrator's own transcript sliced to the batch window between `startedAt` and `closedAt`) and writes the table into the delivery log: raw and cost-weighted, with review rounds per PR and findings per PR beside them, the orchestrator as its own row and a batch total. Set `batch set phase=closed` before running it so the window closes. Compare against the baseline the profile names, if any.
 
 ## 7. Report
 

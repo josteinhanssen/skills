@@ -2,11 +2,12 @@
 """The deliver state file: .deliver/state.json.
 
 Usage (run from the repository root):
-  state.py init <batch-slug> --base <branch> --head <sha>
+  state.py init <batch-slug> --base <branch> --head <sha> [--session-dir <dir>] [--session-jsonl <file>] [--archive]
+                                                            # --archive moves an existing state file to .deliver/state-<old-slug>.json
   state.py ticket <id> set key=value [key=value ...]      # fields per ticket
   state.py ticket <id> get [key]
   state.py batch set key=value [...]
-  state.py grant <resource> <agent-id> | release <resource>
+  state.py grant <resource> <agent-id> | release <resource>   # also writes/removes .deliver/grants/<resource>
   state.py show                                            # table for `deliver status`
   state.py path                                            # print the file path
 
@@ -20,7 +21,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report"}
+KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report","lastReport"}
+GRANTS = Path(".deliver/grants")
+
+
+def grant_path(resource: str) -> Path:
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in resource)
+    return GRANTS / safe
 
 STATE = Path(".deliver/state.json")
 
@@ -62,23 +69,39 @@ def cmd_init(args: list[str]) -> None:
     if not args:
         sys.exit("init needs a batch slug")
     slug, opts = args[0], args[1:]
-    base = head = None
+    base = head = session_dir = session_jsonl = None
+    archive = False
     while opts:
         flag = opts.pop(0)
         if flag == "--base":
             base = opts.pop(0)
         elif flag == "--head":
             head = opts.pop(0)
+        elif flag == "--session-dir":
+            session_dir = opts.pop(0)
+        elif flag == "--session-jsonl":
+            session_jsonl = opts.pop(0)
+        elif flag == "--archive":
+            archive = True
         else:
             sys.exit(f"unknown option {flag}")
+    if STATE.exists():
+        if not archive:
+            sys.exit(f"{STATE} exists; pass --archive to move it to .deliver/state-<old-slug>.json first")
+        old = json.loads(STATE.read_text(encoding="utf-8"))
+        old_slug = (old.get("batch") or {}).get("slug") or "previous"
+        target = STATE.with_name(f"state-{old_slug}.json")
+        if target.exists():
+            sys.exit(f"{target} exists; refusing to overwrite the archive")
+        STATE.rename(target)
+        print(f"archived previous state to {target}")
     state = {
-        "batch": {"slug": slug, "base": base, "head": head, "createdAt": now(), "runOfRecord": None},
+        "batch": {"slug": slug, "base": base, "head": head, "createdAt": now(), "startedAt": now(), "closedAt": None,
+                  "phase": "planning", "sessionDir": session_dir, "sessionJsonl": session_jsonl, "runOfRecord": None},
         "tickets": {},
         "grants": {},
         "followUps": [],
     }
-    if STATE.exists():
-        sys.exit(f"{STATE} exists; refusing to overwrite")
     save(state)
     print(f"initialised {STATE} for batch {slug}")
 
@@ -107,6 +130,8 @@ def cmd_batch(args: list[str]) -> None:
     state = load()
     if args and args[0] == "set":
         apply_sets(state["batch"], args[1:])
+        if state["batch"].get("phase") == "closed" and not state["batch"].get("closedAt"):
+            state["batch"]["closedAt"] = now()
         save(state)
     print(json.dumps(state["batch"], indent=2, ensure_ascii=False))
 
@@ -119,9 +144,12 @@ def cmd_grant(args: list[str]) -> None:
     holder = state["grants"].get(resource)
     if holder:
         sys.exit(f"{resource} is held by {holder['agent']} since {holder['since']}")
-    state["grants"][resource] = {"agent": agent, "since": now()}
+    record = {"resource": resource, "agent": agent, "since": now(), "runs": 1}
+    state["grants"][resource] = record
     save(state)
-    print(f"granted {resource} to {agent}")
+    GRANTS.mkdir(parents=True, exist_ok=True)
+    grant_path(resource).write_text(json.dumps(record) + "\n", encoding="utf-8")
+    print(f"granted {resource} to {agent} ({grant_path(resource)})")
 
 
 def cmd_release(args: list[str]) -> None:
@@ -130,6 +158,8 @@ def cmd_release(args: list[str]) -> None:
     state = load()
     removed = state["grants"].pop(args[0], None)
     save(state)
+    if grant_path(args[0]).exists():
+        grant_path(args[0]).unlink()
     print(f"released {args[0]}" if removed else f"{args[0]} was not held")
 
 

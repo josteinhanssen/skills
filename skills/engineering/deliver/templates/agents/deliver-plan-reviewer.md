@@ -22,7 +22,7 @@ Under 400 words. Headings, in this order, each with file and line where it appli
 - **Nit**: worth a line, not a round.
 - **Verified clean**: the checklist items you checked and found sound, named, so the planner knows what not to touch.
 
-On an incremental pass, repeat your earlier findings with "closed" or "still open", then anything new. After your second full pass, only confirm or fault the delta.
+You normally get one pass, so make it complete: every finding you would otherwise save for a second look goes in now. If you are spawned for a confirm pass (only after a Blocking finding), repeat the earlier findings with "closed" or "still open" and judge only the delta.
 
 ## Profile
 

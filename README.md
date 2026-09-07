@@ -119,13 +119,13 @@ The loop reacts to agent reports:
 - `BLOCKED`: spawn the ruling judge, write the ruling into the spec, resume or respawn the implementer
 - silence past a threshold: check the agent is alive; respawn once from the spec and the on-disk state
 
-The orchestrator runs the authoritative test run itself on the merged head, per the profile's cadence (per PR, or per batch), instead of granting slots to agents. Agents run the cheap rung freely and the targeted rung only on what their spec names. The grant protocol remains for resources the profile lists as exclusive.
+The orchestrator runs the authoritative test run itself on the merged head, per the profile's cadence (per PR, or per batch), instead of granting slots to agents. Agents run the cheap rung freely and the targeted rung only on what their spec names. The grant protocol remains for resources the profile lists as exclusive, and a grant is a file (`.deliver/grants/<resource>`) the waiting agent polls, so it works when the orchestrator has no channel to resume an agent. Merges go through `scripts/pre-merge.py` (explicit fetch of the PR's branch, changed files against the spec, production touches, verdict files) and `scripts/verify-head.sh`, then `pre-merge.py --post` proves the merged tree equals the verified head.
 
 ### Gates and limits
 
 Mandatory regardless of model or ticket size: tests written with the change; one mutation proof per claim; every typecheck the profile lists; the two review axes; content verification on the merged head; the cleanup sweep.
 
-Fixed limits: two full review passes then a closing round; two rulings per ticket then back to planning; one respawn after a dead session; reviewer disagreement is settled by the judge, not the implementer. A small-model PR that fails review on design grounds goes back to the same agent with the ruling first; escalation only when the ruling itself needs design judgment.
+Fixed limits: one review pass on a plan or spec (a confirm pass on the delta only after a Blocking finding; the orchestrator closes the rest by reading the planner's delta); two full PR review passes then a closing round; two rulings per ticket then back to planning; one respawn after a dead session; reviewer disagreement is settled by the judge, not the implementer. A small-model PR that fails review on design grounds goes back to the same agent with the ruling first; escalation only when the ruling itself needs design judgment.
 
 Human touchpoints: approve the plan once; be told about merges; deploys follow the profile.
 

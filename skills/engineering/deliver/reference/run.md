@@ -12,13 +12,13 @@ From the plan: implement in blocking order, in parallel where files are disjoint
 
 ## 2. Spawn
 
-Brief each implementer with: the spec path, the base branch and head, the sandbox assignment, the profile extracts its template marks, the batch-wide rulings, and the sentence "the orchestrator may not be able to message you; resolve to READY-TO-MERGE on the written rulings and report BLOCKED only for a decision the spec cannot answer". Record the agent id.
+Fill `templates/brief-implementer.md` for each implementer: the spec path, the base branch and head, the sandbox assignment, the batch-wide rulings and ruling file, the known base-branch defects to leave alone, and the profile's PR, review-tool and tracker rules. The template already carries the sentence "the orchestrator cannot message you; resolve on the written rulings and report BLOCKED only for a decision the spec cannot answer", the verdict-file and grant-file rules, and the reviewer-id line for READY-TO-MERGE. Record the agent id with `state.py ticket <id> set agent=<agent-id>`.
 
 ## 3. React to reports
 
 Every agent turn ends with a report file. On each:
 
-- `READY-FOR-RUN`: if the requested resource is free, write the grant into the state file and resume the agent with `GO` and the one-run rule; otherwise queue it and resume the holder's successor when the holder reports.
+- `READY-FOR-RUN`: if the requested resource is free, `scripts/state.py grant <resource> <agent-id>`; the agent is already waiting on the grant file and proceeds without a message. Otherwise queue it and grant the next in line when the holder's report shows its run is done (`state.py release` first).
 - `READY-TO-MERGE`: run the merge checklist below.
 - `BLOCKED`: spawn the judge with the spec and the one question; append the RULING to `.deliver/rulings/<ticket>.md` and to the spec's Rulings section; resume the implementer with the ruling. Second BLOCKED on the same ticket: back to `spec`.
 - `VERDICT` from a reviewer that reaches the orchestrator instead of the implementer: relay it verbatim to the implementer with the round number.
@@ -28,10 +28,10 @@ Every agent turn ends with a report file. On each:
 
 Before completing a PR:
 
-1. Both reviewers have confirmed the final head, or the closing-round rule applies and the delta since the last confirmed head is trivial (diff it yourself; test-only and comment-only).
-2. `scripts/verify-head.sh` on the PR head: conflict markers, the profile's invariants, the spec's cheap acceptance commands.
-3. Production files changed are the ones the spec names; anything else is a deviation the report must have declared.
-4. Complete the PR with the profile's merge strategy and command; then verify the merged head's content directly (the same script on the target branch head), never by ancestry.
+1. `scripts/pre-merge.py --ticket <id> --spec <spec> --base <base-ref> --head <head-ref> --head-branch <branch>`: fetches the PR's source branch explicitly, checks every changed file is named in the spec, lists production touches, and checks the latest Spec and Standards verdict files carry no open Blocking. Anything it lists as unnamed or production is a deviation the report must have declared.
+2. Both reviewers have confirmed the final head, or the closing-round rule applies and the delta since the last confirmed head is trivial (diff it yourself; test-only and comment-only).
+3. `scripts/verify-head.sh <head-ref> --fetch <remote>/<branch> --rerun-once` with the profile's invariants: conflict markers, `.only`, the ledger row, the invariants, the spec's cheap acceptance commands.
+4. Complete the PR with the profile's merge strategy and command; then `scripts/pre-merge.py --post --head <head-ref> --merged <target-head>` proves the merged tree equals the verified head, and `verify-head.sh` on the target head confirms the invariants there; never verify by ancestry.
 5. Remove the worktree, the local branch and the remote branch with `scripts/sweep.py --ticket <id>`, after confirming no sibling symlinks into the worktree.
 6. Delete the spec file on the base branch in the next housekeeping commit (or leave it to `close`), and comment on the tracker ticket with the merge commit, what was verified, and what was reported but not fixed.
 7. Update the state file and append to the delivery log.
@@ -61,6 +61,7 @@ The state table (ticket, PR, head, merged, rounds, rulings) and the list of foll
 |---|---|---|
 | `spec`, `model`, `phase`, `pr`, `head`, `merged`, `sandbox`, `rounds`, `rulings`, `findingsAfterMerge` | orchestrator | `status`, `cost.py` (rounds, findings) |
 | `agent` | orchestrator at spawn | `cost.py` as the implementation cost |
+| batch `startedAt`, `closedAt`, `sessionDir`, `sessionJsonl` | `state.py init` (`--session-dir`, `--session-jsonl`) and `batch set phase=closed` | `cost.py` to slice the orchestrator's own transcript to the batch window |
 | `plannerAgents`, `reviewerAgents`, `judgeAgents`, `implementerAgents` (lists) | orchestrator when it spawns them, or from the READY-TO-MERGE report when the implementer spawned the reviewers | `cost.py` per phase |
 
 Record reviewer ids the moment you learn them; an id missing from state lands in the unassigned bucket and the ticket's review cost reads as zero.

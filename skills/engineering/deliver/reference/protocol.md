@@ -36,9 +36,15 @@ An agent never idle-waits on the orchestrator. It ends the turn and is resumed w
 
 The profile lists resources that must not run concurrently (an authoritative browser matrix, an armed backend suite, a shared database migration). An agent may not use one without a grant. A grant covers one run, not a phase; a re-run is a new request. While a grant is held, other agents defer multi-target runs of the same kind and continue with single-target checks.
 
+Grants travel as files, for the same reason verdicts do: the orchestrator may have no channel to resume an agent. `scripts/state.py grant <resource> <agent-id>` records the grant in the state file and writes `.deliver/grants/<resource>`; the agent that reported READY-FOR-RUN waits on that file with `scripts/wait-grant.sh <resource> <agent-id>` (bounded, 45 minutes by default) instead of ending its turn and hoping for a GO. `state.py release <resource>` removes the file when the agent's report shows the run is done. An implementer that runs an exclusive resource without a grant file naming it has deviated, and says so in its report.
+
 The orchestrator runs the authoritative verification itself, on the merged head, at the profile's cadence. Agents run the cheap rung freely and the targeted rung only on what their spec names.
 
 ## Review rounds
+
+Planning phase (plan and spec): one review pass. The plan-reviewer returns one VERDICT; the planner applies every finding; the orchestrator verifies closure by reading the planner's delta against the findings (a cheap diff, not a second review). A confirm pass on the delta is spawned only when the first pass had a Blocking finding. This replaced two passes after the first trial showed the spec phase costing more than the implementation on small tickets.
+
+Implementation phase (PR review):
 
 0. Reviewer verdicts travel as files, never only as notifications. A reviewer writes its VERDICT to `.deliver/reports/<ticket>-<axis>-<pass>.md` before returning it; the implementer waits with `scripts/report.py --wait` on those paths (or polls the directory) instead of idling on a notification that may reach the orchestrator rather than the implementer. A completion notice that says only "waiting for the reviewers" is a defect in the brief, not a state.
 1. After the first push, the orchestrator (or the implementer, if the profile says so) spawns the Standards and the Spec reviewer with refs only.
@@ -60,7 +66,8 @@ Run and record on the head before spawning reviewers; a reviewer's time is not s
 
 ## Limits
 
-- Review passes: two full, then closing. Rounds beyond that mean the spec was wrong; the orchestrator sends the ticket back to `spec`.
+- PR review passes: two full, then closing. Rounds beyond that mean the spec was wrong; the orchestrator sends the ticket back to `spec`.
+- Plan and spec review: one pass, plus a confirm pass on the delta only after a Blocking finding.
 - Rulings per ticket: two, then back to `plan`.
 - Respawns after a dead session: one, from the spec and the last report.
 - A small-model implementer whose PR fails review on design grounds gets the ruling first; the escalation template is used only when the ruling itself needs design judgment the spec cannot express as an instruction.

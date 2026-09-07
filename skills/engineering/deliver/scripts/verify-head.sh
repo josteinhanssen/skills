@@ -1,8 +1,11 @@
 #!/bin/zsh
 # Content verification of a head before and after a merge.
 #
-# Usage: verify-head.sh <ref> [--invariant "<command>"]... [--ledger-row "<regex>"]
+# Usage: verify-head.sh <ref> [--fetch <remote>/<branch>] [--rerun-once] [--invariant "<command>"]... [--ledger-row "<regex>"]
 #   <ref>            the commit, branch or remote ref to verify (checked out read-only via git show/grep)
+#   --fetch R/B      fetch refs/heads/B from remote R into refs/remotes/R/B first (a restricted fetch refspec
+#                    otherwise leaves a PR's source branch unresolved and the script exits 98)
+#   --rerun-once     rerun a failed invariant once; a pass on the rerun is reported as a broken run, not a failure
 #   --invariant CMD  a command that must exit 0 on a checkout of <ref>; run in the current worktree
 #                    after `git checkout --detach <ref>` (the caller decides which worktree)
 #   --ledger-row RE  a line regex that must occur exactly once in the file named by --ledger-file
@@ -11,9 +14,11 @@
 # Exit code is the number of failed checks. Every check prints one line.
 set -u
 REF="${1:?ref required}"; shift
-INVARIANTS=(); LEDGER_ROW=""; LEDGER_FILE=""
+INVARIANTS=(); LEDGER_ROW=""; LEDGER_FILE=""; FETCH=""; RERUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --fetch) FETCH="$2"; shift 2;;
+    --rerun-once) RERUN=1; shift;;
     --invariant) INVARIANTS+=("$2"); shift 2;;
     --ledger-row) LEDGER_ROW="$2"; shift 2;;
     --ledger-file) LEDGER_FILE="$2"; shift 2;;
@@ -21,7 +26,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 fail=0
-sha=$(git rev-parse --short "$REF") || exit 98
+if [ -n "$FETCH" ]; then
+  remote="${FETCH%%/*}"; branch="${FETCH#*/}"
+  git fetch -q "$remote" "+refs/heads/${branch}:refs/remotes/${remote}/${branch}" || { echo "fetch of $FETCH failed"; exit 96; }
+fi
+sha=$(git rev-parse --short "$REF") || { echo "ref $REF does not resolve"; exit 98; }
 echo "== head $sha ($REF)"
 
 markers=$(git grep -n -E '^(\|\|\|\|\|\|\||<<<<<<<|=======|>>>>>>>)' "$REF" -- . | wc -l | tr -d ' ')
@@ -38,7 +47,9 @@ fi
 if [ ${#INVARIANTS[@]} -gt 0 ]; then
   git checkout -q --detach "$REF" || { echo "checkout failed"; exit 97; }
   for cmd in "${INVARIANTS[@]}"; do
-    if eval "$cmd" >/tmp/deliver-invariant.log 2>&1; then echo "invariant ok: $cmd"; else echo "invariant FAILED: $cmd"; tail -5 /tmp/deliver-invariant.log; fail=$((fail+1)); fi
+    if eval "$cmd" >/tmp/deliver-invariant.log 2>&1; then echo "invariant ok: $cmd"
+    elif [ "$RERUN" = "1" ] && eval "$cmd" >/tmp/deliver-invariant-rerun.log 2>&1; then echo "invariant ok on rerun (first attempt was a broken run, see /tmp/deliver-invariant.log): $cmd"
+    else echo "invariant FAILED: $cmd"; tail -5 /tmp/deliver-invariant.log; fail=$((fail+1)); fi
   done
 fi
 echo "== failed checks: $fail"

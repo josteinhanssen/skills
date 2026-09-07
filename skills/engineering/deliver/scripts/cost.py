@@ -2,7 +2,13 @@
 """Tokens per phase per ticket, from the session's JSONL files.
 
 Usage:
-  cost.py --batch <slug> [--session-dir <dir>] [--state .deliver/state.json] [--markdown]
+  cost.py --batch <slug> [--session-dir <dir>] [--session-jsonl <file>] [--state .deliver/state.json] [--markdown]
+
+Events carry timestamps, so the orchestrator's own transcript (batch.sessionJsonl
+in the state file, or --session-jsonl) is sliced to the batch window
+[batch.startedAt, batch.closedAt or now] and reported as its own row; anything
+in the tasks directory that is unmapped is counted only inside that window, so
+an earlier batch in the same session does not pollute the unassigned bucket.
 
 The session directory is where Claude Code keeps this session's transcripts:
 the orchestrator's own `<session-id>.jsonl` and one `tasks/<agent-id>.output`
@@ -30,8 +36,9 @@ from pathlib import Path
 WEIGHTS = {"input": 1.0, "cache_read": 0.1, "cache_write": 2.0, "output": 5.0}
 
 
-def usage_of_file(path: Path) -> dict:
+def usage_of_file(path: Path, window: tuple[str | None, str | None] = (None, None)) -> dict:
     totals = {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "turns": 0}
+    start, end = window
     with path.open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
             line = line.strip()
@@ -40,6 +47,9 @@ def usage_of_file(path: Path) -> dict:
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            stamp = event.get("timestamp") if isinstance(event, dict) else None
+            if isinstance(stamp, str) and ((start and stamp < start) or (end and stamp > end)):
                 continue
             message = event.get("message") if isinstance(event, dict) else None
             usage = (message or {}).get("usage") if isinstance(message, dict) else None
@@ -67,6 +77,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--batch", required=True)
     parser.add_argument("--session-dir")
+    parser.add_argument("--session-jsonl", help="the orchestrator's own transcript; default batch.sessionJsonl")
     parser.add_argument("--state", default=".deliver/state.json")
     parser.add_argument("--markdown", action="store_true")
     args = parser.parse_args()
@@ -78,6 +89,8 @@ def main() -> None:
     tasks = Path(session_dir) / "tasks"
     if not tasks.is_dir():
         sys.exit(f"no tasks directory under {session_dir}")
+    batch = state.get("batch", {})
+    window = (batch.get("startedAt") or batch.get("createdAt"), batch.get("closedAt"))
 
     # agent id -> (ticket, phase)
     mapping: dict[str, tuple[str, str]] = {}
@@ -99,7 +112,7 @@ def main() -> None:
     for output in sorted(tasks.glob("*.output")):
         agent_id = output.stem
         ticket, phase = mapping.get(agent_id, ("(unassigned)", agent_id))
-        totals = usage_of_file(output)
+        totals = usage_of_file(output, window if ticket == "(unassigned)" else (None, None))
         if totals["turns"] == 0:
             continue
         bucket = per[ticket][phase]
@@ -107,9 +120,13 @@ def main() -> None:
             bucket[key] += totals[key]
 
     orchestrator = None
-    for candidate in Path(session_dir).glob("*.jsonl"):
-        orchestrator = usage_of_file(candidate)
-        break
+    jsonl = args.session_jsonl or batch.get("sessionJsonl")
+    if jsonl and Path(jsonl).is_file():
+        orchestrator = usage_of_file(Path(jsonl), window)
+    else:
+        for candidate in Path(session_dir).glob("*.jsonl"):
+            orchestrator = usage_of_file(candidate, window)
+            break
 
     rows = []
     for ticket in sorted(per):
@@ -136,7 +153,10 @@ def main() -> None:
         for r in rows:
             print(f"| {r['ticket']} | {r['plan']:,} | {r['implement']:,} | {r['review']:,} | {r['rulings']:,} | {r['other']:,} | {r['raw']:,} | {r['weighted']:,} | {r['rounds']} | {r['findingsAfterMerge']} |")
         if orchestrator:
-            print(f"\nOrchestrator session: raw {raw(orchestrator):,}, weighted {round(weighted(orchestrator)):,}, {orchestrator['turns']} assistant turns.")
+            print(f"| (orchestrator) | 0 | 0 | 0 | 0 | {raw(orchestrator):,} | {raw(orchestrator):,} | {round(weighted(orchestrator)):,} | None | 0 |")
+            print(f"\nOrchestrator: {orchestrator['turns']} assistant turns inside the batch window {window[0]} .. {window[1] or 'now'}.")
+        total_w = sum(r['weighted'] for r in rows if r['ticket'] != '(unassigned)') + (round(weighted(orchestrator)) if orchestrator else 0)
+        print(f"Batch total (weighted, excluding unassigned): {total_w:,}")
     else:
         print(json.dumps({"batch": args.batch, "tickets": rows, "orchestrator": orchestrator}, indent=2))
 

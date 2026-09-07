@@ -36,7 +36,7 @@ The plan-reviewer returns a VERDICT against this checklist and never edits:
 - Fixtures and harnesses named exist at the stated paths on the base branch.
 - The model choice matches the ruling count and the blast radius.
 
-Two passes, then closing. A spec the reviewer still faults after that goes back to `plan` with the findings.
+One pass. The planner applies every finding; the orchestrator verifies closure on the delta and spawns a confirm pass only after a Blocking finding. A spec the confirm pass still faults goes back to `plan` with the findings.
 
 ## Output
 
