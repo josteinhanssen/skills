@@ -52,8 +52,8 @@ Implementation phase (PR review):
 
 0. Reviewer verdicts travel as files, never only as notifications. A reviewer writes its VERDICT to `.deliver/reports/<ticket>-<axis>-<pass>.md` before returning it; the implementer waits with `scripts/report.py --wait` on those paths (or polls the directory) instead of idling on a notification that may reach the orchestrator rather than the implementer. A completion notice that says only "waiting for the reviewers" is a defect in the brief, not a state.
 1. After the first push, the orchestrator (or the implementer, if the profile says so) spawns the Standards and the Spec reviewer with refs only.
-2. The implementer takes every valid finding, replies with a reason to invalid ones, pushes once, and sends both reviewers the incremental range.
-3. After each reviewer's second full pass, the orchestrator declares the closing round: one push, confirm-only passes. Trivial residue (unused imports, docstrings, counts) is pushed without another round and the orchestrator diffs that delta at merge.
+2. The implementer takes every valid finding, replies with a reason to invalid ones, pushes once, and spawns fresh reviewers for the second full pass with the first verdict file and the incremental range. A ticket whose spec marks `volume: large` (see Sizing) gets one full pass per axis; a second pass only when the first raised a Blocking or Should-fix finding.
+3. The closing round belongs to the orchestrator, never to a third reviewer spawn. After the last full pass the implementer pushes once (the applied findings plus any trivial residue: unused imports, docstrings, counts) and reports READY-TO-MERGE. The orchestrator diffs the delta since the last verdict head (`scripts/pre-merge.py ... --reviewed-head <ref>`), merges when the delta is trivial (test-only, comment-only, bookkeeping, or exactly the edits the verdicts asked for), and spawns one confirm reviewer on the affected axis only when it is not. Implementers do not spawn confirm-only reviewers.
 4. Reviewer disagreement goes to the judge, not to the implementer.
 5. A finding that needs a design decision the spec did not make is a BLOCKED, not a fix.
 6. A BLOCKED whose answer is a wording defect in an acceptance check or a bookkeeping sentence (a command that cannot produce its stated pass shape, a count that contradicts its own block) is ruled by the orchestrator as a numbered ruling appended to the spec and to `.deliver/rulings/<ticket>.md`, without the judge; anything that touches design, scope or coverage still goes to the judge.
@@ -71,11 +71,18 @@ Run and record on the head before spawning reviewers; a reviewer's time is not s
 
 ## Limits
 
-- PR review passes: two full, then closing. Rounds beyond that mean the spec was wrong; the orchestrator sends the ticket back to `spec`.
+- PR review passes: two full (one for a `volume: large` ticket), then the orchestrator's closing diff. Rounds beyond that mean the spec was wrong; the orchestrator sends the ticket back to `spec`.
 - Plan and spec review: one pass, plus a confirm pass on the delta only after a Blocking finding.
 - Rulings per ticket: two, then back to `plan`.
 - Respawns after a dead session: one, from the spec and the last report.
 - A small-model implementer whose PR fails review on design grounds gets the ruling first; the escalation template is used only when the ruling itself needs design judgment the spec cannot express as an instruction.
+
+## Sizing
+
+Two independent marks per ticket, both set by the planner and carried into the spec:
+
+- **Model** (`small` / `large`) follows the ruling count and the blast radius: the work is typing, or the work is design.
+- **Volume** (`volume: large` or nothing) follows the estimated diff, in files and changed lines, against the profile's threshold (default: more than 300 changed lines or more than 8 files). Volume sets the PR review shape: a large-volume ticket gets one full review pass per axis, and the mechanical checks (the pre-merge script, the detector, the mutation probes, the invariants) carry the rest. A 1,197-line sweep across 67 sites with zero findings in six reviewer spawns is what this mark exists for.
 
 ## Sandbox conventions
 

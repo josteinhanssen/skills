@@ -72,4 +72,4 @@ Run in this order on the final head; each line states the shape of a pass.
 - [ ] Every mutation probe names its edit and its expected failure
 - [ ] Files to touch suffice and are disjoint from parallel specs except where the plan states the merge order
 - [ ] Every named fixture and harness exists on the base branch at the stated path
-- [ ] The model choice matches the ruling count and blast radius
+- [ ] The model choice matches the ruling count and blast radius; the volume mark (`volume: large` above the profile's threshold) matches the estimated diff

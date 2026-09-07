@@ -125,7 +125,7 @@ The orchestrator runs the authoritative test run itself on the merged head, per 
 
 Mandatory regardless of model or ticket size: tests written with the change; one mutation proof per claim; every typecheck the profile lists; the two review axes; content verification on the merged head; the cleanup sweep.
 
-Fixed limits: one review pass on a plan or spec (a confirm pass on the delta only after a Blocking finding; the orchestrator closes the rest by reading the planner's delta); two full PR review passes then a closing round; two rulings per ticket then back to planning; one respawn after a dead session; reviewer disagreement is settled by the judge, not the implementer. A small-model PR that fails review on design grounds goes back to the same agent with the ruling first; escalation only when the ruling itself needs design judgment.
+Fixed limits: one review pass on a plan or spec (a confirm pass on the delta only after a Blocking finding; the orchestrator closes the rest by reading the planner's delta); two full PR review passes (one for a `volume: large` ticket, sized by the estimated diff) then a closing round that is the orchestrator's own diff of the delta, never a third reviewer spawn; two rulings per ticket then back to planning; one respawn after a dead session; reviewer disagreement is settled by the judge, not the implementer. A small-model PR that fails review on design grounds goes back to the same agent with the ruling first; escalation only when the ruling itself needs design judgment.
 
 Human touchpoints: approve the plan once; be told about merges; deploys follow the profile.
 

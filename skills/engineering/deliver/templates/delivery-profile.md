@@ -90,6 +90,11 @@ Read by `/deliver`; written by `/deliver setup`. Every field is a fact or a comm
 
 - {figures or "none"}
 
+
+## Sizing
+
+- Volume threshold for one-pass PR review: a ticket whose estimated diff exceeds 300 changed lines or 8 files is marked `volume: large` in the plan and the spec and gets one full review pass per axis; the pre-merge script and the mechanical checks carry the rest.
+
 ## Machine resources
 
 - Worker cap for an agent's multi-file test run (e.g. `--maxWorkers=4`); the orchestrator's own checks keep the defaults because they run alone.

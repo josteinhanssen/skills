@@ -76,6 +76,7 @@ def main() -> None:
     parser.add_argument("--repo", default=".")
     parser.add_argument("--post", action="store_true")
     parser.add_argument("--merged")
+    parser.add_argument("--reviewed-head", help="the last head a verdict covered; the delta since it is listed and classified for the closing round")
     args = parser.parse_args()
     repo = Path(args.repo)
     fails = 0
@@ -143,6 +144,23 @@ def main() -> None:
             print(f"verdict {axis}: {latest.name} has an OPEN Blocking section")
         else:
             print(f"verdict {axis}: {latest.name} clean")
+
+    # 5. closing-round delta since the last reviewed head
+    if args.reviewed_head:
+        reviewed = resolve(repo, args.reviewed_head)
+        if not reviewed:
+            fails += 1
+            print(f"reviewed head {args.reviewed_head} does not resolve")
+        else:
+            delta = [line for line in git(repo, "diff", "--name-only", args.reviewed_head, args.head).split("\n") if line]
+            stat = git(repo, "diff", "--numstat", args.reviewed_head, args.head).strip()
+            if not delta:
+                print(f"closing delta since {reviewed}: none (head already reviewed)")
+            else:
+                code = [f for f in delta if not pattern.search(f)]
+                print(f"closing delta since {reviewed} ({len(delta)} files):\n{stat}")
+                print("closing delta: TRIVIAL by pattern (tests, docs, bookkeeping only); read the hunks before merging" if not code
+                      else "closing delta: touches non-test files " + ", ".join(code) + "; one confirm reviewer on the affected axis unless the hunks are exactly the edits the verdicts asked for")
 
     print(f"== failed checks: {fails}")
     sys.exit(fails)

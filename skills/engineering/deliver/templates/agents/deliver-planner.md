@@ -19,7 +19,7 @@ Tracer-bullet tickets with complete, acyclic blocking edges (use `to-tickets`), 
 
 ## Model assignment
 
-`small` by default. `large` when a ticket's ruling count stays high after you have written every ruling you can (the work is design, not typing), when the blast radius crosses a shared seam, or when the profile lists the area as large-model only. Say which.
+Two marks per ticket. Volume: estimate the diff in files and changed lines and write `volume: large` above the profile's threshold (default more than 300 changed lines or more than 8 files); it sets the PR review to one full pass per axis, so a mechanical sweep that is small by judgment and large by volume is not reviewed six times. Model: `small` by default. `large` when a ticket's ruling count stays high after you have written every ruling you can (the work is design, not typing), when the blast radius crosses a shared seam, or when the profile lists the area as large-model only. Say which.
 
 ## Where judgment usually hides
 

@@ -15,7 +15,7 @@ Say which one applies at the start of the output.
 Give the planner: the spec, the whole profile, and the repository. It produces `.deliver/plans/<slug>.md` containing:
 
 - The ticket list from `to-tickets` (tracer-bullet slices with blocking edges), one line each: id or slug, title, blocked-by.
-- For every ticket: files it will touch, files it must not touch, the model it needs (`small` unless a ruling count or blast radius says `large`), and a size estimate (files, tests).
+- For every ticket: files it will touch, files it must not touch, the model it needs (`small` unless a ruling count or blast radius says `large`), and a size estimate in files, changed lines and tests, marked `volume: large` above the profile's threshold (default more than 300 changed lines or more than 8 files), which sets the PR review to one full pass per axis.
 - The file-overlap map: any file two parallel tickets both touch, and the order they must merge in.
 - Shared seams the tickets will create (a harness, a fixture module, a helper), each with exactly one owning ticket. Two tickets that would each write their own version of the same seam is a plan defect.
 - Rulings the whole batch shares (caps and what they mean, what stays at which test rung, naming, what "done" is), so individual specs inherit them.
@@ -33,7 +33,7 @@ Checklist:
 - Every ticket is a vertical slice with a visible result; blocking edges are complete and acyclic.
 - No file is touched by two parallel tickets without a stated merge order.
 - Every shared seam has one owner.
-- Model assignment is justified by the ruling count and blast radius, not by habit.
+- Model assignment is justified by the ruling count and blast radius, not by habit; the volume mark is justified by the estimated diff in files and lines.
 - Every batch-wide judgment call is written as a ruling; none is deferred to "the implementer decides".
 - Exclusive resources are named where a ticket needs one.
 - Nothing in the spec is unaccounted for by a ticket, and no ticket does work the spec did not ask for.

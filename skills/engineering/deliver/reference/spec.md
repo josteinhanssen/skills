@@ -11,7 +11,7 @@ Turns one ticket into one or more spec files, each executable by the small model
 Give the planner: the ticket, the plan (with its batch-wide rulings), the profile, the repository, and `templates/spec.md`. It fills every section:
 
 - **Goal and non-goals.** One paragraph each. Non-goals name the neighbouring work that is out of scope and where it is ticketed.
-- **Model and size.** `small` or `large`, with the reason; files and tests expected.
+- **Model and size.** `small` or `large`, with the reason; files and tests expected; the diff volume in files and changed lines, marked `volume: large` above the profile's threshold (default more than 300 changed lines or more than 8 files), which sets the PR review to one full pass per axis.
 - **Rulings.** Every judgment call the implementer or a reviewer could otherwise make, decided: caps and whether they are targets, what stays at which test rung and why, naming, fixture shape, what to do on a base-branch defect found in passing (report, never fix), what an accidental deletion must be checked against.
 - **Files to touch** and **files not to touch**, both explicit paths. Shared support files are named with their owner.
 - **Tests**, by name, with what each proves and at which rung; for a migration, the map from every removed test to its counterpart or to a written "stays" ruling.
@@ -34,7 +34,7 @@ The plan-reviewer returns a VERDICT against this checklist and never edits:
 - Every mutation probe names its edit and its expected failure.
 - Files to touch are sufficient for the goal and disjoint from other parallel specs except where the plan states the merge order.
 - Fixtures and harnesses named exist at the stated paths on the base branch.
-- The model choice matches the ruling count and the blast radius.
+- The model choice matches the ruling count and the blast radius; the volume mark matches the estimated diff.
 
 One pass. The planner applies every finding; the orchestrator verifies closure on the delta and spawns a confirm pass only after a Blocking finding. A spec the confirm pass still faults goes back to `plan` with the findings.
 

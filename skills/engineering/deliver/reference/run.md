@@ -8,7 +8,7 @@ Read `.deliver/state.json`. If the batch exists, this is a resume: for every tic
 
 ## 1. Schedule
 
-From the plan: implement in blocking order, in parallel where files are disjoint, up to the profile's parallelism. Assign each implementer a sandbox from the profile's conventions (worktree path, port range, database name, cache directory) and record it in the state file. Tickets whose spec says `large` use the escalation template from the start.
+From the plan: implement in blocking order, in parallel where files are disjoint, up to the profile's parallelism. Assign each implementer a sandbox from the profile's conventions (worktree path, port range, database name, cache directory) and record it in the state file. Tickets whose spec says `large` use the escalation template from the start; tickets whose spec marks `volume: large` get one full review pass per axis, and the brief says so.
 
 ## 2. Spawn
 
@@ -29,7 +29,7 @@ Every agent turn ends with a report file. On each:
 Before completing a PR:
 
 1. `scripts/pre-merge.py --ticket <id> --spec <spec> --base <base-ref> --head <head-ref> --head-branch <branch>`: fetches the PR's source branch explicitly, checks every changed file is named in the spec, lists production touches, and checks the latest Spec and Standards verdict files carry no open Blocking. Anything it lists as unnamed or production is a deviation the report must have declared.
-2. Both reviewers have confirmed the final head, or the closing-round rule applies and the delta since the last confirmed head is trivial (diff it yourself; test-only and comment-only).
+2. Both reviewers have confirmed the final head, or the delta since the last verdict head is trivial: `scripts/pre-merge.py ... --reviewed-head <ref>` lists and classifies it (test-only, doc-only, bookkeeping, or exactly the edits the verdicts asked for); anything else gets one confirm reviewer on the affected axis before the merge.
 3. `scripts/verify-head.sh <head-ref> --fetch <remote>/<branch> --rerun-once` with the profile's invariants: conflict markers, `.only`, the ledger row, the invariants, the spec's cheap acceptance commands.
 4. Complete the PR with the profile's merge strategy and command; then `scripts/pre-merge.py --post --head <head-ref> --merged <target-head>` proves the merged tree equals the verified head, and `verify-head.sh` on the target head confirms the invariants there; never verify by ancestry.
 5. Remove the worktree, the local branch and the remote branch with `scripts/sweep.py --ticket <id>`, after confirming no sibling symlinks into the worktree.
