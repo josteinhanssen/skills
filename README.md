@@ -143,6 +143,10 @@ Four tickets, all merged with zero post-merge findings and at most two review ro
 
 Defects found in the skill during the trial, fixed: reviewer verdicts delivered only as notifications (now files the implementer polls); reviewer ids unknown to the orchestrator when the implementer spawns reviewers (now listed in READY-TO-MERGE); the state keys `cost.py` attributes by were undocumented (now in `reference/run.md`, and `state.py` warns on others); a broken invariant run (runner stopped, no result line) read as a failure (rerun-once rule).
 
+#### Second trial (hygiene-1, 2026-09-07)
+
+Three tickets in four PRs, all merged with zero post-merge findings and at most two review rounds each, under the one-pass planning rule. Weighted: batch planning 16.0M, MSITE-240 14.0M, MSITE-238 28.3M, MSITE-234 33.8M, orchestrator 15.3M. The orchestrator's share fell by more than half against the first trial (34.2M), the planning phase stayed flat because Blocking findings earned confirm passes, and the small-model tickets cost more than the first trial's because they were much larger diffs (238: 67 collapse sites, 1,197 lines) and because implementers spawned a third reviewer pair for the closing round. The batch also produced the machine-resource rule (a concurrency probe overlapping other agents' suites exhausted 48 GB), the liveness rule (agent list, never transcript files), and the no-reset rule for respawn briefs, each learned the expensive way.
+
 ### Repository layout
 
 ```
