@@ -116,7 +116,8 @@ def main() -> None:
     print(f"changed files ({len(changed)}):\n{status}")
     spec_text = Path(args.spec).read_text(encoding="utf-8")
     named = set(re.findall(r"`([^`\s]+)`", spec_text))
-    unnamed = [f for f in changed if f not in named and Path(f).name not in named]
+    # a spec may name a file by full path, by basename, or by a trailing sub-path (`PreviewProof/x.test.tsx`)
+    unnamed = [f for f in changed if not any(f == n or f.endswith('/' + n) or Path(f).name == n for n in named)]
     if unnamed:
         fails += 1
         print("NOT NAMED IN THE SPEC: " + ", ".join(unnamed))
