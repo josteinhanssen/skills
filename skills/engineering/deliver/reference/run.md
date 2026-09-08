@@ -60,6 +60,7 @@ The state table (ticket, PR, head, merged, rounds, rulings) and the list of foll
 | Key | Set by | Read by |
 |---|---|---|
 | `spec`, `model`, `phase`, `pr`, `head`, `merged`, `sandbox`, `rounds`, `rulings`, `findingsAfterMerge` | orchestrator | `status`, `cost.py` (rounds, findings) |
+| `slug`, `volume` (`large` or `normal`), `blockedBy` (list), `respawns` | orchestrator from the approved plan | `status`; the run schedule |
 | `agent` | orchestrator at spawn | `cost.py` as the implementation cost |
 | batch `startedAt`, `closedAt`, `sessionDir`, `sessionJsonl` | `state.py init` (`--session-dir`, `--session-jsonl`) and `batch set phase=closed` | `cost.py` to slice the orchestrator's own transcript to the batch window |
 | `plannerAgents`, `reviewerAgents`, `judgeAgents`, `implementerAgents` (lists) | orchestrator when it spawns them, or from the READY-TO-MERGE report when the implementer spawned the reviewers | `cost.py` per phase |

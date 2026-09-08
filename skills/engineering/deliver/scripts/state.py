@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report","lastReport"}
+KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report","lastReport","volume","slug","blockedBy","respawns","merged1","merged2","pr1","pr2","head1","head2"}
 GRANTS = Path(".deliver/grants")
 
 
