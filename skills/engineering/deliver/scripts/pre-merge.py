@@ -71,7 +71,12 @@ def section_items(text: str, heading: str) -> int:
     body = match.group(1).strip()
     if not body or body.splitlines()[0].strip().lower().startswith(("none", "no ", "nothing")):
         return 0
-    return sum(1 for line in body.splitlines() if re.match(r"^\s*(-|\*|\d+\.)\s+", line)) or 1
+    # numbered findings (`1.` or `**1.`) are the items; when a verdict numbers them, sub-bullets
+    # under an item are evidence, not further items
+    numbered = sum(1 for line in body.splitlines() if re.match(r"^\s*\**\d+\.\s+", line))
+    if numbered:
+        return numbered
+    return sum(1 for line in body.splitlines() if re.match(r"^\s*(-|\*)\s+", line)) or 1
 
 
 def main() -> None:
