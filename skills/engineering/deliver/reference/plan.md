@@ -45,3 +45,5 @@ Planner writes; the reviewer returns one VERDICT; the planner takes every findin
 ## Output
 
 The plan file path, the ticket table with model and size, the overlap map, and the rulings. If the profile has a tracker, create or update the tickets there with a summary and a link to the plan; the plan file stays the detailed artifact.
+
+Every claim about a pipeline, a policy or a gate names the file and line that makes it true (the yml step that sets the variable, the policy id, the test's guard). A ruling that predicts what CI will report is a measurement, not an inference: the delivery-diagnostics batch planned for a contract-comparer failure that never came, because the validation pipeline never armed the comparer, and the close spent an hour finding out why.

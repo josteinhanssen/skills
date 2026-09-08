@@ -18,6 +18,7 @@ Fill `templates/brief-implementer.md` for each implementer: the spec path, the b
 
 Every agent turn ends with a report file. On each:
 
+- Closing round on a delta that touches production code (a behavioural fix after the last full pass): read every hunk against the verdict that asked for it, and prove the pinning test with one mutation in the orchestrator's scratch checkout — break the fix, run the single test file, see it fail, restore. A delta the verdicts did not ask for, or one the orchestrator cannot verify by reading plus one probe, goes back to the implementer or to one confirm reviewer; never merge it on the implementer's word.
 - `READY-TO-MERGE` for the first half of a two-repository ticket: run the closing round and complete that half, then resume the same implementer (`SendMessage` to its agent id) with the merged head; it branches the second half from it. An implementer that completes a PR itself has deviated; verify the merged tree against the reviewed head as usual and record the deviation.
 - `READY-FOR-RUN`: if the requested resource is free, `scripts/state.py grant <resource> <agent-id>`; the agent is already waiting on the grant file and proceeds without a message. Otherwise queue it and grant the next in line when the holder's report shows its run is done (`state.py release` first).
 - `READY-TO-MERGE`: run the merge checklist below.
