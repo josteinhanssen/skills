@@ -38,6 +38,8 @@ The plan-reviewer returns a VERDICT against this checklist and never edits:
 
 One pass. The planner applies every finding; the orchestrator verifies closure on the delta and spawns a confirm pass only after a Blocking finding. A spec the confirm pass still faults goes back to `plan` with the findings.
 
+One planner per spec file at a time. When two tickets' fix rounds would both edit one spec file (a cross-ticket seam such as a shared helper, an enum, a hook name), the orchestrator either runs the second fix round after the first's delta is in, with that delta named in its brief, or rules the seam itself in `.deliver/rulings/<ticket>.md` and names the ruling in both briefs; two planners writing the same file in parallel produce two truths and a confirm pass that reviews neither.
+
 ## Output
 
 The spec path(s), the model per spec, the size, and the rulings added since the plan. Update the tracker ticket with the spec link if the profile has one.
