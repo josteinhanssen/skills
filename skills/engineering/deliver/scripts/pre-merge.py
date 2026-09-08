@@ -63,6 +63,17 @@ def blocking_open(text: str) -> bool:
     return not (first.startswith("none") or first.startswith("no ") or first.startswith("nothing") or "no blocking" in first)
 
 
+def section_items(text: str, heading: str) -> int:
+    """Count bullet items under a '## <heading>' section; 0 when the section says none."""
+    match = re.search(rf"^#{{1,4}}\s*\**{heading}\**:?\s*$(.*?)(?=^#{{1,4}}\s|\Z)", text, re.M | re.S)
+    if not match:
+        return 0
+    body = match.group(1).strip()
+    if not body or body.splitlines()[0].strip().lower().startswith(("none", "no ", "nothing")):
+        return 0
+    return sum(1 for line in body.splitlines() if re.match(r"^\s*(-|\*|\d+\.)\s+", line)) or 1
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ticket")
@@ -143,7 +154,11 @@ def main() -> None:
             fails += 1
             print(f"verdict {axis}: {latest.name} has an OPEN Blocking section")
         else:
-            print(f"verdict {axis}: {latest.name} clean")
+            should = section_items(text, "Should-fix")
+            if should:
+                print(f"verdict {axis}: {latest.name} no Blocking, but {should} Should-fix item(s) listed; read the whole file and confirm each is closed on the head before completing")
+            else:
+                print(f"verdict {axis}: {latest.name} clean")
 
     # 5. closing-round delta since the last reviewed head
     if args.reviewed_head:
