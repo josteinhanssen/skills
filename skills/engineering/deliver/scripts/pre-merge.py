@@ -129,7 +129,15 @@ def main() -> None:
     spec_text = Path(args.spec).read_text(encoding="utf-8")
     named = set(re.findall(r"`([^`\s]+)`", spec_text))
     # a spec may name a file by full path, by basename, or by a trailing sub-path (`PreviewProof/x.test.tsx`)
-    unnamed = [f for f in changed if not any(f == n or f.endswith('/' + n) or Path(f).name == n for n in named)]
+    def matches(path: str, name: str) -> bool:
+        if path == name or path.endswith('/' + name) or Path(path).name == name:
+            return True
+        # a spec may name a generated file with a placeholder: `<timestamp>_Name.cs`, `*_Name.cs`, `{n}`
+        pattern = re.sub(r"<[^>]+>|\{[^}]+\}|\*", ".*", re.escape(name).replace(r"\<", "<").replace(r"\>", ">").replace(r"\{", "{").replace(r"\}", "}").replace(r"\*", "*"))
+        if pattern != re.escape(name):
+            return re.fullmatch(pattern, path) is not None or re.fullmatch(pattern, Path(path).name) is not None or re.fullmatch(".*/" + pattern, path) is not None
+        return False
+    unnamed = [f for f in changed if not any(matches(f, n) for n in named)]
     if unnamed:
         fails += 1
         print("NOT NAMED IN THE SPEC: " + ", ".join(unnamed))
