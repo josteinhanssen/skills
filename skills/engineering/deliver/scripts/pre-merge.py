@@ -132,11 +132,18 @@ def main() -> None:
     def matches(path: str, name: str) -> bool:
         if path == name or path.endswith('/' + name) or Path(path).name == name:
             return True
-        # a spec may name a generated file with a placeholder: `<timestamp>_Name.cs`, `*_Name.cs`, `{n}`
-        pattern = re.sub(r"<[^>]+>|\{[^}]+\}|\*", ".*", re.escape(name).replace(r"\<", "<").replace(r"\>", ">").replace(r"\{", "{").replace(r"\}", "}").replace(r"\*", "*"))
-        if pattern != re.escape(name):
-            return re.fullmatch(pattern, path) is not None or re.fullmatch(pattern, Path(path).name) is not None or re.fullmatch(".*/" + pattern, path) is not None
-        return False
+        # a spec may name a generated file with a placeholder: `<timestamp>_Name.cs`, `*_Name.cs`, `{n}_Name.cs`.
+        # The basename must keep at least six literal characters in its stem, or the token is prose
+        # (`<pre>`, `<workspace>`, `*.test.tsx`) and names no file: such a token once matched every path.
+        wildcard = r"<[^>]+>|\{[^}]+\}|\*"
+        if not re.search(wildcard, name):
+            return False
+        stem = re.sub(r"\.[A-Za-z0-9]+$", "", name.rsplit("/", 1)[-1])
+        literal = re.sub(r"[^A-Za-z0-9]", "", re.sub(wildcard, "", stem))
+        if len(literal) < 6:
+            return False
+        pattern = ".*".join(re.escape(part) for part in re.split(wildcard, name))
+        return re.fullmatch(pattern, path) is not None or re.fullmatch(pattern, Path(path).name) is not None or re.fullmatch(".*/" + pattern, path) is not None
     unnamed = [f for f in changed if not any(matches(f, n) for n in named)]
     if unnamed:
         fails += 1
