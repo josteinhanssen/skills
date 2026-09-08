@@ -18,6 +18,7 @@ Fill `templates/brief-implementer.md` for each implementer: the spec path, the b
 
 Every agent turn ends with a report file. On each:
 
+- `READY-TO-MERGE` for the first half of a two-repository ticket: run the closing round and complete that half, then resume the same implementer (`SendMessage` to its agent id) with the merged head; it branches the second half from it. An implementer that completes a PR itself has deviated; verify the merged tree against the reviewed head as usual and record the deviation.
 - `READY-FOR-RUN`: if the requested resource is free, `scripts/state.py grant <resource> <agent-id>`; the agent is already waiting on the grant file and proceeds without a message. Otherwise queue it and grant the next in line when the holder's report shows its run is done (`state.py release` first).
 - `READY-TO-MERGE`: run the merge checklist below.
 - `BLOCKED`: spawn the judge with the spec and the one question; append the RULING to `.deliver/rulings/<ticket>.md` and to the spec's Rulings section; resume the implementer with the ruling. Second BLOCKED on the same ticket: back to `spec`.
