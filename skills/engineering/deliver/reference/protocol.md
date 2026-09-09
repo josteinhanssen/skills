@@ -60,6 +60,8 @@ Implementation phase (PR review):
 5. A finding that needs a design decision the spec did not make is a BLOCKED, not a fix.
 6. A BLOCKED whose answer is a wording defect in an acceptance check or a bookkeeping sentence (a command that cannot produce its stated pass shape, a count that contradicts its own block) is ruled by the orchestrator as a numbered ruling appended to the spec and to `.deliver/rulings/<ticket>.md`, without the judge; anything that touches design, scope or coverage still goes to the judge.
 
+Orchestrator hotfixes stop at wording the orchestrator can verify by reading: an anchor, a citation, a pass shape, a check's command, a ruling's cross-reference, a count the file list already states. They never write a fixture's shape, a test table, a type declaration, a probe's mechanism or a number the orchestrator would have to recompute — those go back to the planner even when the reviewer has spelled out the fix, because the planner re-measures and the orchestrator does not. Measured on handoff-and-calendar (2026-09-09): two orchestrator hotfixes on specs each earned a fresh Blocking (a grep term that spanned a line break; a fixture envelope with its members in the wrong object and every dependent count left stale), each costing a confirm pass and a planner round that a planner round alone would have cost once.
+
 ## Mechanical checks before review
 
 Run and record on the head before spawning reviewers; a reviewer's time is not spent on what a script proves:
