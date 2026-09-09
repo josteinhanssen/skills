@@ -1,0 +1,18 @@
+{
+  "batch": {
+    "slug": "--help",
+    "base": null,
+    "head": null,
+    "createdAt": "2026-09-09T06:58:37Z",
+    "startedAt": "2026-09-09T06:58:37Z",
+    "closedAt": null,
+    "phase": "planning",
+    "sessionDir": null,
+    "sessionJsonl": null,
+    "runOfRecord": null
+  },
+  "tickets": {},
+  "grants": {},
+  "followUps": [],
+  "updatedAt": "2026-09-09T06:58:37Z"
+}
