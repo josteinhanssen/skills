@@ -28,4 +28,4 @@ You implement exactly one spec for `deliver`, in your own sandbox, and stop at R
 
 ## Turn-end protocol
 
-Exactly one of `READY-FOR-RUN`, `READY-TO-MERGE`, `BLOCKED`, written to your report file (`.deliver/reports/<your-id>-<n>.md`) and returned as your final message, in the shape `reference/protocol.md` defines. Never claim a result you did not run on the final head.
+Never end a turn to wait for your reviewers: wait for their verdict files with a bounded background shell loop (`until [ -f .deliver/reports/<ticket>-spec-<n>.md ] && [ -f .deliver/reports/<ticket>-standards-<n>.md ]; do sleep 30; done`) the way you poll the external review tool, and act when it returns; the harness reliably re-invokes you for a shell task and not for a finished child agent. Exactly one of `READY-FOR-RUN`, `READY-TO-MERGE`, `BLOCKED`, written to your report file (`.deliver/reports/<your-id>-<n>.md`) and returned as your final message, in the shape `reference/protocol.md` defines. Never claim a result you did not run on the final head.
