@@ -105,11 +105,25 @@ def main() -> None:
             print(f"refs: head={head} merged={merged} (unresolved)")
             sys.exit(1)
         diff = git(repo, "diff", "--stat", args.head, args.merged).strip()
-        if diff:
-            print(f"post-merge: trees DIFFER between {head} and {merged}:\n{diff}")
+        if not diff:
+            print(f"post-merge: identical trees {head} == {merged}")
+            sys.exit(0)
+        # The target may have moved between the reviews and the completion (another PR landed
+        # first). Then the merged tree is not the head's tree but the clean three-way merge of the
+        # head onto the target's tip just before the merge, which is the merged commit's first
+        # parent. Recompute that merge and compare trees; only a difference there is a defect.
+        parent = git(repo, "rev-parse", "--verify", "-q", f"{args.merged}^1").strip()
+        expected = git(repo, "merge-tree", "--write-tree", parent, args.head).strip().splitlines()
+        expected_tree = expected[0] if expected else ""
+        if expected_tree and len(expected) == 1:
+            residue = git(repo, "diff", "--stat", expected_tree, f"{args.merged}^{{tree}}").strip()
+            if not residue:
+                print(f"post-merge: the target moved to {parent[:8]} before completion; {merged} is the clean merge of {head} onto it (merge-tree {expected_tree[:8]}, identical)")
+                sys.exit(0)
+            print(f"post-merge: trees DIFFER between the clean merge of {head} onto {parent[:8]} and {merged}:\n{residue}")
             sys.exit(1)
-        print(f"post-merge: identical trees {head} == {merged}")
-        sys.exit(0)
+        print(f"post-merge: trees DIFFER between {head} and {merged}, and the merge onto {parent[:8]} is not clean:\n{diff}")
+        sys.exit(1)
 
     for name in ("ticket", "spec", "base"):
         if not getattr(args, name):
