@@ -1,6 +1,6 @@
 # Implementer brief (filled by the orchestrator at spawn)
 
-Implement the spec `{spec-path}` in `{repository-path}`. Read the spec in full, then the batch-wide rulings in `{plan-path}` under "Batch-wide rulings", then the ruling file `{rulings-path}` if it exists; your template carries the profile extract.
+Implement the spec `{spec-path}` in `{repository-path}`. Read the spec in full, then the batch-wide rulings in `{plan-path}` under "Batch-wide rulings", then the ruling file `{rulings-path}` if it exists; your template carries the profile extract. A ruling the spec leaves open is proposed in your handback with its measurement, never written into the spec file; the orchestrator ratifies and records it.
 
 Base: `{base-branch}` at its current head (`git fetch` first; it is `{base-head}` or later; every number in your PR comes from your own measurement on your head, never from the spec's figures). Branch `{ticket-branch}`; worktree `{worktree-path}`; {sandbox-assignment: ports, database, cache directory}. Dependencies: {dependency rule from the profile}.
 
