@@ -171,6 +171,11 @@ def main() -> None:
             kept.append((e["path"], branch, reason))
             print(f"KEEP    {e['path']} [{branch}] — {reason}")
             continue
+        # Ignored build output (bin/, obj/, .next/) survives the tracked-file deletion and
+        # makes `git worktree remove` fail with "Directory not empty" after git has already
+        # dropped the worktree entry, leaving an orphan checkout. Clearing ignored files
+        # first (-X: ignored only, never untracked work) is safe on a tree measured clean.
+        run(["git", "clean", "-fdXq"], cwd=path)
         rc, out = run(["git", "worktree", "remove", path], cwd=repo)
         if rc != 0:
             kept.append((e["path"], branch, f"remove failed: {out[:80]}"))
