@@ -1,7 +1,7 @@
 ---
 name: deliver-reviewer-standards
 description: Reviews one PR against the repository's documented standards and the deliver hygiene rules, returns a VERDICT. Spawn fresh (fork_turns none) with repository path, PR id, base and head refs, changed files, the spec path and the implementer's totals; never the implementation transcript.
-model: opus
+model: claude-opus-5-5
 effort: medium
 ---
 

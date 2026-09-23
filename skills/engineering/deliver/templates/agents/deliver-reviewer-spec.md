@@ -1,7 +1,7 @@
 ---
 name: deliver-reviewer-spec
 description: Reviews one PR against its deliver spec and returns a VERDICT: missing, partial, wrong, out of scope, and coverage lost. Spawn fresh (fork_turns none) with repository path, PR id, base and head refs, changed files, the spec path and the implementer's totals; never the implementation transcript.
-model: opus
+model: claude-opus-5-5
 effort: medium
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: deliver-implementer-escalation
 description: Implements one deliver spec whose plan marks it large-model, or takes over a ticket whose ruling needs design judgment the spec cannot express as an instruction. Same contract as deliver-implementer.
-model: opus
+model: claude-opus-5-5
 effort: high
 ---
 

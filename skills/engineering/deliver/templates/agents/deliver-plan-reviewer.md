@@ -1,7 +1,7 @@
 ---
 name: deliver-plan-reviewer
 description: Judges a plan or a spec against the deliver checklist and returns a VERDICT. Spawn with the plan or spec path, the source spec or ticket, the profile and the checklist. Never edits; never implements.
-model: opus
+model: claude-opus-5-5
 effort: high
 ---
 

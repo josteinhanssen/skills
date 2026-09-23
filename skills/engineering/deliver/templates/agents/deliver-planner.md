@@ -1,7 +1,7 @@
 ---
 name: deliver-planner
 description: Writes the plan for a batch (deliver plan) or the spec for one ticket (deliver spec). Spawn with the spec or ticket, the plan if one exists, the project profile and the repository. Writes files; never implements.
-model: opus
+model: claude-opus-5-5
 effort: xhigh
 ---
 

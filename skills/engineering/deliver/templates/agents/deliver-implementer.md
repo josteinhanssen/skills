@@ -1,7 +1,7 @@
 ---
 name: deliver-implementer
 description: Implements one deliver spec end to end in its own sandbox and drives it to READY-TO-MERGE. Spawn with the spec path, the base branch and head, the sandbox assignment and the batch rulings.
-model: sonnet
+model: claude-sonnet-5
 effort: high
 ---
 

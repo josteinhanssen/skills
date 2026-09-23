@@ -62,6 +62,8 @@ One skill, six sub-commands, each runnable alone:
 
 Installed as agent definitions with `model` and `effort` set, so the split is enforced rather than remembered.
 
+The templates pin model IDs, not aliases: large is Opus 5.5 (`claude-opus-5-5`), small is Sonnet 5 (`claude-sonnet-5`). An alias resolves to whatever the running Claude Code maps it to, and versions differ (2.1.278 maps `opus` to Opus 5, 2.1.280 to Opus 5.5), so a pinned ID keeps every agent in a batch on the model the delivery log names. Trials one to seven ran on the `opus` and `sonnet` aliases. The implementer stays on Sonnet 5 for now: Opus 5.5 costs twice as much on input and output ($4/$20 per MTok against $2/$10) and the same on cache reads ($0.20), which are most of an implementer's bill. Whether that makes Opus 5.5 implementers cheaper per merged ticket is for a trial to measure.
+
 | Role | Default | Spawned with |
 |---|---|---|
 | Planner | large, extra high | the goal or spec, the profile, the repo |

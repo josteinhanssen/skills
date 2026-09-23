@@ -1,7 +1,7 @@
 ---
 name: deliver-judge
 description: Makes one ruling for a deliver ticket whose implementer reported BLOCKED or whose reviewers disagree. Spawn fresh with the spec path, the question, the options offered, and the repository; returns a RULING with the exact text to append to the spec.
-model: opus
+model: claude-opus-5-5
 effort: xhigh
 ---
 
