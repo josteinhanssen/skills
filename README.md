@@ -36,7 +36,7 @@ So the grilling is the plan. The decisions a spec used to make, the implementer 
 ### The flow
 
 1. **Budget.** The orchestrator reads plan usage, proposes a weekly cap, and the user agrees once.
-2. **Intake.** Every ticket gets checked against the bar (behavioural acceptance criteria, blocking edges, one repository, risk tags, out of scope, an ADR link, about 400 lines) and fixed in the tracker. Tickets group into batches of up to 6 tickets or about 2,500 lines.
+2. **Intake.** Every ticket gets checked against the bar (behavioural acceptance criteria, blocking edges, one repository, risk tags, out of scope, an ADR link, about 400 production lines) and fixed in the tracker. Tickets group into batches of up to 6 tickets or about 2,500 production lines.
 3. **Per ticket.** A fresh implementer builds from the batch head and commits with a `Decisions:` list. A ticket reviewer writes up to 15 flags. The implementer fixes the flags it can confirm and answers the rest. `merge-ticket.sh` merges the ticket into the batch branch.
 4. **Final review.** The integration branch is merged in and the full tests run. A correctness reviewer and a quality reviewer read the whole batch in parallel and rule on every flag. Follow-ups outside the batch's own code become tickets.
 5. **Fix round.** One fixer, one round. The orchestrator reads the delta, and a confirm pass runs only after a Blocking finding.
@@ -51,8 +51,8 @@ The session stops for the user only for a product or scope question, anything pa
 | Orchestrator | the user's session | the whole run | everything, including the tracker |
 | Implementer | Opus 5.5, high | one ticket, resumed once for flags | files, shell, skills |
 | Ticket reviewer | Haiku 4.5 | one ticket's diff, one pass | read, shell, write its flag file |
-| Correctness reviewer | Opus 5.5, high | the whole batch | read, shell, write its findings |
-| Quality reviewer | Opus 5.5, high | the whole batch, against its own fixed bar | read, shell, write its findings |
+| Correctness reviewer | Opus 5.5, xhigh | the whole batch | read, shell, write in its own scratch worktree; returns its findings |
+| Quality reviewer | Opus 5.5, xhigh | the whole batch, against its own fixed bar | read, shell; returns its findings |
 | Fixer | Opus 5.5, high | the one fix round, or one CI or deploy failure | files, shell, skills |
 
 No role gets MCP servers, and none spawns another agent. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
@@ -60,7 +60,7 @@ No role gets MCP servers, and none spawns another agent. The quality reviewer's 
 ### Cost controls
 
 - `autoCompactWindow: 300000` in the user settings caps every session and agent at 300k tokens of context.
-- Agents are fresh per ticket or per batch and report in under 300 words; the orchestrator never reads a transcript.
+- Agents are fresh per ticket or per batch and report in under 300 words, except the final reviewers, whose report is their findings (under 900); the orchestrator never reads a transcript.
 - An explicit `tools` list per agent keeps MCP tool definitions out of every call.
 - One or two tickets at a time, each from the batch head: no rebases, grants or locks.
 - `autoContinueAtUsageLimit: true` lets a batch wait out a 5-hour limit; the weekly cap stops it.
@@ -73,6 +73,28 @@ No role gets MCP servers, and none spawns another agent. The quality reviewer's 
 | `/deliver <ADR \| tickets> [--into <branch>]` | the whole run, resumable from `.deliver/state.json` |
 | `/deliver status` | prints the batch from the state file, no model work |
 | `/deliver setup` | writes or migrates the project profile, installs the role agents, checks the two settings |
+
+### Trials
+
+**1. `ate-488-b1` (Memerix backend, 2026-09-25).** Three small tickets (ATE-514, ATE-516 and ATE-500's backend half, about 110–150 production lines each) went through one batch PR to dev: 6.01M weighted tokens, 2.00M per ticket. The target is 12M; the old flow's last full batch cost 41.6M per ticket. Weekly usage went from 85% to 86%.
+
+| Role | Agents | Weighted | Opus-eq | Share (opus-eq) |
+|---|---|---|---|---|
+| Implementer | 3 | 1.74M | 1.74M | 32% |
+| Ticket reviewer (Haiku) | 3 | 0.76M | 0.19M | 3% |
+| Final review, both axes | 2 | 0.92M | 0.92M | 17% |
+| Fixer | 1 | 0.78M | 0.78M | 14% |
+| Orchestrator | — | 1.82M | 1.82M | 33% |
+
+What it taught the skill:
+
+- The harness refuses a Write of a report-like file from a sub-agent ("Subagents should return findings as text"). It stopped both final reviewers' `findings-*.md` and let the ticket reviewers' `flags/*.md` through. Final reviewers now return their findings as their report, and the orchestrator saves them.
+- The Haiku ticket reviewers flagged nothing on all three tickets, while the quality reviewer found four Should-fix issues. One of them, a duplicated test helper, was within the Haiku reviewer's checks. Its checks now also cover test helpers, a rule written in several places, and the profile's naming and API rules. The next batch decides whether it stays.
+- The orchestrator made 80 calls, and its context grew from 79k to 253k tokens. Most of the growth was its own reasoning and tool inputs; the tracker's echoes of whole tickets were about 19k.
+- Claude Code's permission check refuses the orchestrator's own vote on the batch PR as self-approval, whatever consent the state records. That is now a designed stop, with the by-hand completion named in the profile.
+- The weekly cap now stops new tickets only, so merged tickets always reach delivery. Plan usage reads in whole percents, so the cost row takes the weekly delta per batch.
+- The final reviewers moved from high to xhigh effort. They are the last check before dev and 17% of the cost; the implementers stay at high until a batch shows a need.
+- Smaller fixes: the intake size bar counts production lines only, `verify-merge.py` recognises .NET `*.Tests` projects, `sweep.py` accepts a branch the host already deleted, and `cost.py` finds the session from the agent ids.
 
 ### History
 

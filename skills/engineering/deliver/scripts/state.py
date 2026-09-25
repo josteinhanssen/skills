@@ -9,7 +9,8 @@ Usage (run from the workspace root the profile names):
   state.py show
 
 Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null), so
-`blockedBy=["A-1"]` and `reviewers={"correctness":"x"}` work.
+`blockedBy=["A-1"]` and `reviewers={"correctness":"x"}` work. `init` stores the ADR path as an
+absolute path, since agents working in worktrees read it.
 
 Layout: {"batch": {...}, "repos": {name: {...}}, "tickets": {id: {...}}}. `init` sets
 `batch.startedAt`; `batch set phase=delivered` also sets `batch.closedAt`. `init` moves an
@@ -31,7 +32,7 @@ ARCHIVE = Path(".deliver/archive")
 
 KNOWN_BATCH_KEYS = {
     "slug", "adr", "phase", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
-    "weeklyAtStart", "weeklyCap", "reviewers", "fixer", "confirm", "followUps",
+    "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "reviewers", "fixer", "confirm", "followUps",
 }
 KNOWN_REPO_KEYS = {
     "path", "into", "batchBranch", "baseHead", "scratch", "reviewedHead", "pr",
@@ -114,7 +115,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     state = {
         "batch": {
             "slug": args.slug,
-            "adr": args.adr,
+            "adr": str(Path(args.adr).resolve()),
             "phase": None,
             "startedAt": now(),
             "closedAt": None,
