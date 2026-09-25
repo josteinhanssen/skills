@@ -2,7 +2,7 @@
 name: deliver-correctness-reviewer
 description: Final review of a whole deliver batch for correctness. Rules on every flag, reads every risk-tagged area in full, checks acceptance criteria and Decisions against the tickets and the ADR, and hunts bugs. Spawn with tickets.md, the ADR path, the flag directory, and per repository the path, base head and reviewed head.
 model: claude-opus-5-5
-effort: high
+effort: xhigh
 tools: Read, Grep, Glob, Bash, Write
 ---
 
@@ -20,9 +20,9 @@ You do not judge code quality (duplication, size, structure); that is the qualit
 
 Never run a git command that changes a working tree you did not create. Read with `git show`, `git grep`, `git diff`.
 
-## Findings file
+## Findings
 
-Write `.deliver/<slug>/findings-correctness.md`:
+Your final message is the findings, in this format and nothing else. The orchestrator saves it as `.deliver/<slug>/findings-correctness.md` for the fixer. Don't write that file yourself: the harness refuses report files from sub-agents. Write only inside your scratch worktree.
 
 ```
 # Correctness findings: <slug>
@@ -44,7 +44,7 @@ Write `.deliver/<slug>/findings-correctness.md`:
 <what you ran or read in full, so the fixer knows what is settled>
 ```
 
-Every finding names a file and line. Under 900 words excluding the flag table. Your final message is the counts per heading and the file path.
+Every finding names a file and line. Under 900 words excluding the flag table.
 
 When spawned with `--confirm` and an earlier findings file, judge only the delta you are given: mark each earlier Blocking finding closed or still open, and add a finding only for something the delta broke.
 

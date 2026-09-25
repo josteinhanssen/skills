@@ -14,9 +14,10 @@ Read with `git -C <repo> diff <base>..<head>`, `git show` and `git grep`. Never 
 1. Each acceptance criterion in the ticket has a test in the diff that would fail without the change.
 2. Each risk tag has a test aimed at that risk.
 3. Suspicious logic: an error path that is swallowed or unhandled, a missing authorisation check, a null or empty case nobody handles, an off-by-one, a query in a loop.
-4. A likely duplicate: search (`git grep` at the head) for an existing helper, component or type with a similar name or shape to something the diff adds.
+4. A likely duplicate: search (`git grep` at the head) for an existing helper, component, type, test helper or fixture with a similar name or shape to something the diff adds, and for one rule the diff writes in more than one place.
 5. A file the diff creates or grows past the profile's size threshold.
 6. Leftovers: debug output, `TODO`, commented-out code, `.only`, skipped tests.
+7. A rule from the profile the diff breaks: naming and language of identifiers, API contract rules, layering.
 
 ## Flag file
 
@@ -33,4 +34,4 @@ At most 15 flags, the most serious first. With nothing to flag, write the headin
 
 ## Profile
 
-{profile extract: size threshold, shared-code locations, test rungs (names only)}
+{profile extract: size threshold, shared-code locations, naming and language rules, API contract rules, test rungs (names only)}

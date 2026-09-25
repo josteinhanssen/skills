@@ -226,6 +226,7 @@ def main() -> None:
             rc, dirty = sh("git status --porcelain | wc -l", cwd=path)
             rc, head = sh(["git", "rev-parse", "HEAD"], cwd=path)
             rc, remote = sh(["git", "rev-parse", "-q", "--verify", f"origin/{branch}"], cwd=path)
+            remote = remote if rc == 0 else head  # a pruned tracking ref: the host deleted the branch
             if status != "completed":
                 reason = f"PR {status}"
             elif dirty.strip() != "0":
@@ -251,6 +252,12 @@ def main() -> None:
         run(["git", "branch", "-D", branch], cwd=repo)
         removed.append((e["path"], branch))
         print(f"REMOVED {e['path']} [{branch}]")
+        rc, live_ref = sh(["git", "ls-remote", "--heads", "origin", branch], cwd=repo)
+        if rc == 0 and not live_ref:
+            # The host deleted the branch when the PR completed; only the tracking ref is left.
+            run(["git", "branch", "-dr", f"origin/{branch}"], cwd=repo)
+            deleted_remote.append((branch, "already deleted on origin"))
+            continue
         rc, out = run(["git", "push", "origin", "--delete", branch], cwd=repo)
         (deleted_remote if rc == 0 else kept_remote).append((branch, out[:80]))
 

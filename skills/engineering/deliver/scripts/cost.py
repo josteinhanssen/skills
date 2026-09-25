@@ -14,8 +14,9 @@ sliced to that window so an earlier or later batch in the same session does not 
 The session directory is `~/.claude/projects/<project>/<session-id>/`: it holds one
 `subagents/agent-<id>.jsonl` per sub-agent, and the orchestrator's own transcript is the sibling
 `<session-id>.jsonl`. The temporary `tasks/<id>.output` copies are read for any agent missing from
-`subagents/`. Each is a JSONL transcript with `usage` blocks on assistant messages. By default the
-script finds the directory from the state file's `batch.sessionDir`, or from $CLAUDE_SESSION_DIR.
+`subagents/`. Each is a JSONL transcript with `usage` blocks on assistant messages. The script takes
+the directory from --session-dir, the state file's `batch.sessionDir` or $CLAUDE_SESSION_DIR, and
+otherwise finds it by looking up the agent ids the state file records under ~/.claude/projects/.
 
 Weighted tokens follow the explain-usage convention: input 1x, cache reads 0.1x, cache writes 2x,
 output 5x. Assistant messages are deduped by id (a resumed or retried transcript can repeat one).
@@ -24,8 +25,9 @@ The opus-eq column further weights each message by a factor read from its own mo
 
 --summary-row prints one markdown row for `.deliver/costs.md`:
   | <YYYY-MM-DD> | <slug> | <tickets> | <weighted total, M> | <weighted per ticket, M> | <opus-eq per ticket, M> | <weekly % per ticket or n/a> |
-Weekly % per ticket is (the latest ticket's weeklyAtEnd - batch.weeklyAtStart) / tickets, when
-both exist; otherwise "n/a". --summary-header prints that row's header (combine with --summary-row
+Weekly % per ticket is (batch.weeklyAtEnd - batch.weeklyAtStart) / tickets, falling back to the
+latest ticket's weeklyAtEnd when the batch has none; "n/a" without a start and an end. Plan usage
+reads in whole percents, so per-ticket readings rarely move; the batch-level end is the one that counts. --summary-header prints that row's header (combine with --summary-row
 for a ready-to-append block; use --summary-header alone once, ahead of the file's first row).
 """
 from __future__ import annotations
@@ -165,12 +167,13 @@ def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict]) -> s
     opus_per_ticket_m = (opus_total / 1_000_000) / n if n else 0.0
 
     weekly_at_start = batch.get("weeklyAtStart")
-    latest_weekly_at_end = None
-    for entry in tickets.values():
-        if entry.get("weeklyAtEnd") is not None:
-            latest_weekly_at_end = entry["weeklyAtEnd"]
-    if n and weekly_at_start is not None and latest_weekly_at_end is not None:
-        weekly_pct = f"{(latest_weekly_at_end - weekly_at_start) / n:.2f}%"
+    weekly_at_end = batch.get("weeklyAtEnd")
+    if weekly_at_end is None:
+        for entry in tickets.values():
+            if entry.get("weeklyAtEnd") is not None:
+                weekly_at_end = entry["weeklyAtEnd"]
+    if n and weekly_at_start is not None and weekly_at_end is not None:
+        weekly_pct = f"{(weekly_at_end - weekly_at_start) / n:.2f}%"
     else:
         weekly_pct = "n/a"
 
@@ -192,6 +195,15 @@ def agent_transcripts(session_dir: Path) -> dict[str, Path]:
     return found
 
 
+def find_session_dir(state: dict) -> Path | None:
+    """The session directory holding any agent id the state file records, searched across projects."""
+    projects = Path.home() / ".claude" / "projects"
+    for agent_id in build_mapping(state):
+        for path in projects.glob(f"*/*/subagents/agent-{agent_id}.jsonl"):
+            return path.parent.parent
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--batch", required=True)
@@ -205,9 +217,11 @@ def main() -> None:
 
     state = load_state(Path(args.state))
     batch = state.get("batch", {})
-    session_dir = args.session_dir or batch.get("sessionDir") or os.environ.get("CLAUDE_SESSION_DIR")
+    session_dir = (
+        args.session_dir or batch.get("sessionDir") or os.environ.get("CLAUDE_SESSION_DIR") or find_session_dir(state)
+    )
     if not session_dir:
-        sys.exit("session directory unknown: pass --session-dir or set batch.sessionDir in the state file")
+        sys.exit("session directory unknown: no recorded agent id has a transcript under ~/.claude/projects; pass --session-dir")
     transcripts = agent_transcripts(Path(session_dir))
     if not transcripts:
         sys.exit(f"no sub-agent transcripts under {session_dir} (looked in subagents/ and tasks/)")

@@ -22,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_TEST_PATTERN = r"(\.test\.[cm]?[jt]sx?$|\.spec\.[cm]?[jt]sx?$|(^|/)tests?/|(^|/)__tests__/|budget\.json$|_test\.go$|_test\.py$|(^|/)test_[^/]+\.py$)"
+DEFAULT_TEST_PATTERN = r"(\.test\.[cm]?[jt]sx?$|\.spec\.[cm]?[jt]sx?$|(^|/)tests?/|(^|/)__tests__/|(^|/)[^/]+\.[A-Za-z]*Tests?/|[A-Za-z]Tests?\.cs$|budget\.json$|_test\.go$|_test\.py$|(^|/)test_[^/]+\.py$)"
 DEFAULT_DOC_PATTERN = r"(\.md$|\.mdx$|(^|/)docs/|(^|/)README(\.[^/]+)?$)"
 
 
