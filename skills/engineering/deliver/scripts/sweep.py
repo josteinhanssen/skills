@@ -4,19 +4,25 @@
 Usage (from the repository root):
   sweep.py --host azure-devops --project "<project>" --repo "<repo>" [--org <url>] [--ticket <branch>] [--dry-run]
   sweep.py --host github [--repo <owner/name>] [--ticket <branch>] [--dry-run]
+  sweep.py --merged-into <ref> --ticket <branch> [--dry-run]
 
 Options:
   --keep-branch <name>    never delete (repeatable; integration, batch, prototype branches)
   --keep-path <path>      never remove this worktree (repeatable; active agents, scratch)
-  --pattern <regex>       branches considered ticket branches (default: feature/|batch-|msite-|ticket/)
+  --pattern <regex>       branches considered ticket branches (default: feature/|batch-|batch/|msite-|ticket/)
 
-Rules, in order, for every non-primary worktree:
+Host modes (--host; PR-completed, for batch branches), rules in order for every non-primary worktree:
   keep if its path is protected, it is detached, its PR is not completed, its tree is dirty,
   or its head differs from the PR's merged source commit;
   otherwise `git worktree remove` (never --force), `git branch -D`, and delete the remote branch.
 Then remote ticket branches without a worktree are deleted under the same PR rule, and local
 branches whose remote is gone are deleted. Before removing a worktree the script checks that no
 other worktree's node_modules symlink resolves into it.
+
+--merged-into mode (for one ticket branch, once its merge into the batch branch is pushed): keep
+if the branch's worktree path is protected or missing, its head is not an ancestor of <ref>, or
+its tree is dirty; otherwise clear ignored build output, `git worktree remove` (never --force)
+and `git branch -D`. Never touches the remote and never calls a host CLI.
 """
 from __future__ import annotations
 
@@ -110,21 +116,75 @@ def symlink_targets_into(entries: list[dict], target: str) -> list[str]:
     return hits
 
 
+def is_ancestor(repo: str, commit: str, ref: str) -> bool:
+    rc, _ = sh(["git", "merge-base", "--is-ancestor", commit, ref], cwd=repo)
+    return rc == 0
+
+
+def sweep_merged_into(args: argparse.Namespace, repo: str, entries: list[dict], primary: str,
+                       keep_branches: set[str], keep_paths: set[str], run) -> None:
+    removed, kept = [], []
+    for e in entries:
+        path = os.path.realpath(e["path"])
+        branch = e.get("branch", "?")
+        if path == primary or branch != args.ticket:
+            continue
+        reason = None
+        if path in keep_paths:
+            reason = "protected path"
+        elif branch == "(detached)":
+            reason = "detached"
+        elif branch in keep_branches:
+            reason = "protected branch"
+        else:
+            rc, head = sh(["git", "rev-parse", "HEAD"], cwd=path)
+            if rc != 0 or not is_ancestor(repo, head, args.merged_into):
+                reason = f"head {head[:8]} is not an ancestor of {args.merged_into}"
+            else:
+                rc, dirty = sh("git status --porcelain | wc -l", cwd=path)
+                if dirty.strip() != "0":
+                    reason = f"dirty ({dirty.strip()} entries)"
+                elif symlink_targets_into(entries, path):
+                    reason = f"node_modules symlink target of {symlink_targets_into(entries, path)}"
+        if reason:
+            kept.append((e["path"], branch, reason))
+            print(f"KEEP    {e['path']} [{branch}] — {reason}")
+            continue
+        run(["git", "clean", "-fdXq"], cwd=path)
+        rc, out = run(["git", "worktree", "remove", path], cwd=repo)
+        if rc != 0:
+            kept.append((e["path"], branch, f"remove failed: {out[:80]}"))
+            print(f"KEEP    {e['path']} — remove failed: {out[:100]}")
+            continue
+        run(["git", "branch", "-D", branch], cwd=repo)
+        removed.append((e["path"], branch))
+        print(f"REMOVED {e['path']} [{branch}]")
+    if not removed and not kept:
+        print(f"no worktree found for ticket branch {args.ticket}")
+    print(f"\nSUMMARY: removed {len(removed)} worktree(s) merged into {args.merged_into}, kept {len(kept)}")
+    for k in kept:
+        print("  kept:", k)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", choices=["azure-devops", "github"], required=True)
+    ap.add_argument("--host", choices=["azure-devops", "github"], help="required unless --merged-into is given")
+    ap.add_argument("--merged-into", help="ref a ticket branch's head must be an ancestor of; used with --ticket to remove one merged ticket's worktree and local branch without the remote or a host CLI")
     ap.add_argument("--org", default=os.environ.get("AZURE_DEVOPS_ORG", ""))
     ap.add_argument("--project")
     ap.add_argument("--repo")
     ap.add_argument("--ticket", help="only this branch")
     ap.add_argument("--keep-branch", action="append", default=[])
     ap.add_argument("--keep-path", action="append", default=[])
-    ap.add_argument("--pattern", default=r"^(feature/|batch-|msite-|ticket/)")
+    ap.add_argument("--pattern", default=r"^(feature/|batch-|batch/|msite-|ticket/)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    if not args.merged_into and not args.host:
+        ap.error("--host is required unless --merged-into is given")
+    if args.merged_into and not args.ticket:
+        ap.error("--merged-into requires --ticket")
 
     repo = os.getcwd()
-    host = AzureDevOps(args.org, args.project, args.repo) if args.host == "azure-devops" else GitHub(args.repo)
     keep_branches = set(args.keep_branch) | {"main", "master", "dev"}
     keep_paths = {os.path.realpath(p) for p in args.keep_path}
     pattern = re.compile(args.pattern)
@@ -138,6 +198,13 @@ def main() -> None:
     sh(["git", "worktree", "prune"], cwd=repo)
     entries = worktrees(repo)
     primary = os.path.realpath(entries[0]["path"]) if entries else repo
+
+    if args.merged_into:
+        sweep_merged_into(args, repo, entries, primary, keep_branches, keep_paths, run)
+        sh(["git", "worktree", "prune"], cwd=repo)
+        return
+
+    host = AzureDevOps(args.org, args.project, args.repo) if args.host == "azure-devops" else GitHub(args.repo)
     removed, kept, deleted_remote, kept_remote = [], [], [], []
 
     for e in entries:
