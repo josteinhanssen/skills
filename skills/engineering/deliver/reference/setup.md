@@ -9,7 +9,7 @@ Look first; ask only what the workspace cannot tell you.
 - An existing `docs/agents/delivery-profile.md`: carry every fact over. Drop what the new flow has no use for: spec roots, plan and spec rulings, the volume threshold, grants, lock directories, exclusive resources, the delivery log path, the external review tool, the UI hook.
 - Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names and whether the risk labels exist.
 - Repositories: every git repository in the workspace, its `origin` host, and which CLI is signed in (`az repos`, `gh`).
-- Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds.
+- Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds, and which merge types the integration branch's policy allows (a batch PR wants a merge commit; squash-only is recorded as such).
 - Deploy: pipeline definitions, whether a merge deploys by itself or runs are queued by hand, after-deploy steps.
 - Test rungs: `package.json` scripts, solution and project files, validation ladders in CLAUDE.md, durations.
 - Sandbox: worktree directories, port ranges, database naming, per-worktree caches.
@@ -39,7 +39,7 @@ Read `~/.claude/settings.json`. Recommend, and set only with the user's yes:
 
 ## 6. The state directory
 
-Create `.deliver/` at the workspace root. If the workspace root is a git repository, add `.deliver/` to `.git/info/exclude`; it is never committed.
+Create `.deliver/` at the workspace root. If the workspace root is a git repository, add `.deliver/` to `.git/info/exclude`; it is never committed. A deliver-v1 workspace already has one: leave its directories (plans, specs, rulings, grants, locks, briefs, batches, reports) as they are. Its `state.json` is archived by the first `state.py init`.
 
 ## 7. Report
 
