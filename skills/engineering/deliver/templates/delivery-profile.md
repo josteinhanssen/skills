@@ -30,7 +30,7 @@ One block per repository, in delivery order (the first one's batch PR merges fir
 - Create PR: `{command with {branch} {target} {title} {body}}`
 - PR status (CI and policy builds): `{command with {pr}}`; done when {field and value}
 - Vote: `{command}`; who may vote: {the creator's vote counts | a named reviewer, which makes it a stop}
-- Complete PR with a merge commit: `{command}`
+- Complete batch PR: `{command}` (strategy: merge commit, or squash when the branch policy allows only that; name the policy)
 - Required policy builds: {pipeline and the file:line that requires it | none}
 - Deploy: {automatic on merge to the integration branch | queued by hand}
   - Queue: `{command}` {or none}

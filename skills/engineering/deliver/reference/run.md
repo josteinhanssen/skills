@@ -66,7 +66,7 @@ scripts/state.py ticket <id> set repo=<name> phase=queued blockedBy=[...]
 scripts/state.py batch set phase=building
 ```
 
-`.deliver/` sits at the workspace root the profile names and is never committed.
+`.deliver/` sits at the workspace root the profile names and is never committed. `init` moves a delivered batch's state file, or one written by deliver-v1, into `.deliver/archive/`, and refuses while a batch is open.
 
 ## 4. Per ticket
 
@@ -111,7 +111,7 @@ Per repository, in the profile's order (backend before frontend):
 
 1. Open the batch PR from the batch branch into the integration branch with the profile's command. Description: what each ticket did, its Decisions, the final review's summary (findings fixed, disputed, filed as follow-ups), and the tickets it closes. Record `repo <name> set pr=<id>`.
 2. Wait for CI and the required policy builds with a background shell loop on the profile's PR status command, never by polling in turns. A failure gets one fixer attempt, then it is a stop.
-3. Vote as the profile allows (the creator's vote, when the policy counts it) and complete the PR with a merge commit.
+3. Vote as the profile allows (the creator's vote, when the policy counts it) and complete the PR with the profile's batch strategy: a merge commit where the branch policy allows one, so each ticket's commit and Decisions stay on the integration branch; a squash where it only allows that, with every ticket's Decisions in the PR description.
 4. `scripts/verify-merge.py --repo <path> --reviewed <reviewedHead> --merged <integration head>`: the merged tree must equal the reviewed tree, or be the clean merge of it onto a target that moved.
 5. Deploy per the profile: watch the automatic deploy by commit, or queue it with the profile's commands and watch each run by id; then run the profile's after-deploy steps. A failure: read the run's log tail once; a code cause gets one fixer attempt and a new batch PR from the fix; a second failure is a stop.
 6. `scripts/sweep.py --host <host> ... --ticket <batch-branch>` removes the scratch worktree and the batch branch, local and remote, once the PR is completed and the heads match.

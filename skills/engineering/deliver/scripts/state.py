@@ -12,7 +12,9 @@ Values are strings unless they parse as JSON (numbers, lists, objects, true/fals
 `blockedBy=["A-1"]` and `reviewers={"correctness":"x"}` work.
 
 Layout: {"batch": {...}, "repos": {name: {...}}, "tickets": {id: {...}}}. `init` sets
-`batch.startedAt`; `batch set phase=delivered` also sets `batch.closedAt`. `state.py` accepts any
+`batch.startedAt`; `batch set phase=delivered` also sets `batch.closedAt`. `init` moves an
+existing state file into .deliver/archive/ when its batch is delivered or it was written by
+deliver-v1 (no `repos` key), and refuses while a batch is open. `state.py` accepts any
 key, but warns on one outside reference/run.md's State keys table, since `cost.py` and `status`
 read only those.
 """
@@ -25,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 STATE = Path(".deliver/state.json")
+ARCHIVE = Path(".deliver/archive")
 
 KNOWN_BATCH_KEYS = {
     "slug", "adr", "phase", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
@@ -44,10 +47,35 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def read() -> dict:
+    return json.loads(STATE.read_text(encoding="utf-8"))
+
+
+def is_v1(state: dict) -> bool:
+    """A state file written by deliver-v1 (plan, spec, run, close) has no `repos` key."""
+    return "repos" not in state
+
+
+def is_open(state: dict) -> bool:
+    return not is_v1(state) and state.get("batch", {}).get("phase") != "delivered"
+
+
 def load() -> dict:
     if not STATE.exists():
         sys.exit(f"no state file at {STATE}; run `state.py init` first")
-    return json.loads(STATE.read_text(encoding="utf-8"))
+    state = read()
+    if is_v1(state):
+        sys.exit(f"{STATE} is a deliver-v1 state file; `state.py init` archives it and starts a batch")
+    return state
+
+
+def archive(state: dict) -> Path:
+    slug = state.get("batch", {}).get("slug") or "unnamed"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dest = ARCHIVE / f"state-{'v1-' if is_v1(state) else ''}{slug}-{stamp}.json"
+    ARCHIVE.mkdir(parents=True, exist_ok=True)
+    STATE.rename(dest)
+    return dest
 
 
 def save(state: dict) -> None:
@@ -75,7 +103,14 @@ def apply_sets(target: dict, pairs: list[str], known: set[str]) -> None:
 
 def cmd_init(args: argparse.Namespace) -> None:
     if STATE.exists():
-        sys.exit(f"{STATE} exists; remove it to start a new batch")
+        existing = read()
+        if is_open(existing):
+            batch = existing["batch"]
+            sys.exit(
+                f"batch {batch.get('slug')} is open (phase {batch.get('phase')}) in {STATE}; "
+                "resume it, or set its phase to delivered before starting another"
+            )
+        print(f"archived the previous state file to {archive(existing)}")
     state = {
         "batch": {
             "slug": args.slug,
@@ -119,8 +154,19 @@ def cmd_ticket(args: argparse.Namespace) -> None:
 
 
 def cmd_show(_: argparse.Namespace) -> None:
-    state = load()
+    if not STATE.exists():
+        sys.exit(f"no state file at {STATE}; run `state.py init` first")
+    state = read()
+    if is_v1(state):
+        batch = state.get("batch", {})
+        print(
+            f"no open batch: {STATE} is a deliver-v1 state file (batch {batch.get('slug')}, "
+            f"phase {batch.get('phase')}); `state.py init` archives it"
+        )
+        return
     batch = state["batch"]
+    if not is_open(state):
+        print(f"no open batch: the last one, {batch.get('slug')}, is delivered; `state.py init` archives it")
     print(
         f"batch {batch.get('slug')}  phase {batch.get('phase')}  adr {batch.get('adr')}  "
         f"weekly {batch.get('weeklyAtStart')}->{batch.get('weeklyCap')}  "
