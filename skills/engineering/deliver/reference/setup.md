@@ -1,41 +1,46 @@
 # deliver setup
 
-Produces the project profile and installs the role templates. Run once per repository, and again when the profile changes.
+Writes the project profile and installs the role agents. Run once per workspace, again when the project changes, and once to migrate a profile written for the old `deliver` (plan, spec, run, close).
 
 ## 1. Discover before asking
 
-Look before interviewing; ask only what the repository cannot tell you.
+Look first; ask only what the workspace cannot tell you.
 
-- Tracker: `docs/agents/issue-tracker.md` if `setup-matt-pocock-skills` ran; otherwise MCP servers available in the session, `.github/`, or nothing (files-only tracker).
-- VCS host: the `origin` URL (Azure DevOps, GitHub, other) and which CLI is signed in (`az repos`, `gh`).
-- Branch model: the default branch, any long-lived integration branch named in CLAUDE.md, whether a batch branch is in use.
-- Test rungs: `package.json` scripts, solution or project files, existing CLAUDE.md validation ladders; which suite is the authoritative one and how long it takes.
-- Sandbox conventions: existing worktree directories, port ranges, database naming in CLAUDE.md or agent definitions.
-- External review tool: bot comments on recent PRs, their limits (file count, rate limits) if CLAUDE.md records them.
-- Deploy: pipeline definitions and how runs are queued and watched.
-- Cleanup exceptions: protected branches, prototype or design-authority branches named in docs.
-- UI: whether `impeccable` is installed and whether the project has a design authority.
+- An existing `docs/agents/delivery-profile.md`: carry every fact over. Drop what the new flow has no use for: spec roots, plan and spec rulings, the volume threshold, grants, lock directories, exclusive resources, the delivery log path, the external review tool, the UI hook.
+- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names and whether the risk labels exist.
+- Repositories: every git repository in the workspace, its `origin` host, and which CLI is signed in (`az repos`, `gh`).
+- Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds.
+- Deploy: pipeline definitions, whether a merge deploys by itself or runs are queued by hand, after-deploy steps.
+- Test rungs: `package.json` scripts, solution and project files, validation ladders in CLAUDE.md, durations.
+- Sandbox: worktree directories, port ranges, database naming, per-worktree caches.
+- Quality: standards documents, and where shared components, helpers and types live.
+- Never: prohibitions in CLAUDE.md or AGENTS.md (databases, environments, secrets).
 
 ## 2. Interview the gaps
 
-Ask one round of numbered questions with a recommended answer each, in the `grilling` format, only for fields discovery left empty or ambiguous. Typical gaps: the merge strategy per PR kind, the authoritative-run cadence, the review-tool policy, and which resources are exclusive.
+One round of numbered questions in the `grilling` format, each with a recommended answer, only for fields discovery left empty or ambiguous. Typical gaps: who may vote on a batch PR, the size thresholds, the risk labels, the deploy's after-steps.
 
 ## 3. Write the profile
 
-Fill `templates/delivery-profile.md` and write it to `docs/agents/delivery-profile.md`. Every field is a fact or a command, never advice. Commands are complete and copy-pasteable, with placeholders in braces (`{branch}`, `{pr}`, `{port}`). If a field does not apply, write "none" so a later reader knows it was considered.
+Fill `templates/delivery-profile.md` and write it to `docs/agents/delivery-profile.md`. Every field is a fact or a complete command; "none" where it does not apply.
 
-## 4. Install the role templates
+## 4. Install the role agents
 
-Copy `templates/agents/*.md` into the project's `.claude/agents/`, keeping the `model` and `effort` frontmatter. Replace the `{profile extract}` markers with the profile fields each role needs (implementers: sandbox, test rungs, bookkeeping; reviewers: standards documents and invariants; planner: everything). Do not add project prose beyond those extracts; the templates are the contract and the profile is the data.
+Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner, plan-reviewer, judge, implementer-escalation, reviewer-spec, reviewer-standards). Copy the five templates from `templates/agents/`, keeping their frontmatter (`model`, `effort`, `tools`). Replace each `{profile extract}` marker with the profile fields it names, and every `scripts/` reference with the absolute path of the installed skill's `scripts/` directory. Add no other project prose; the templates are the contract and the profile is the data.
 
-## 5. Add the state directory
+Newly installed agents can take a few minutes to register in a running session. Retry the spawn by name before anything else.
 
-Create `.deliver/` with `state.json` (from `scripts/state.py init`), `rulings/`, and a `.gitignore` that excludes `reports/`. Add the delivery-log path from the profile if the file does not exist.
+## 5. Check the user's settings
 
-## 6. Report
+Read `~/.claude/settings.json`. Recommend, and set only with the user's yes:
 
-List what was discovered, what was asked, the profile path, the installed agents, and anything the user should verify by hand (a CLI not signed in, a pipeline id guessed from a name).
+- `autoCompactWindow: 300000`, so no session or agent drags more than 300k tokens of context through every call;
+- `autoContinueAtUsageLimit: true`, so a batch waits out a 5-hour limit and continues on its own.
 
-Say plainly that newly installed role agents take a short while to register in a running session (observed: not available on the first spawn attempt, available a few minutes later without a restart). Retry the spawn by name before falling back; if a phase must start at once, run its role as a general-purpose agent with the template body pasted into the brief and the model passed explicitly, which loses the template's `effort` setting and its pinned model ID (the spawn takes only an alias, which resolves to whatever the running Claude Code maps it to), and say both in the delivery log.
+## 6. The state directory
 
-Every sentence in the profile about a pipeline, a policy or a gate names the file and line that makes it true, and is re-measured when the policy changes: the delivery-diagnostics profile claimed the validation pipeline armed the contract comparer because a policy had just been added to it, and the claim survived a whole batch until a spec reviewer measured the yml. A profile is read as fact by every planner and implementer; a wrong sentence there costs a planner round each time it is cited.
+Create `.deliver/` at the workspace root. If the workspace root is a git repository, add `.deliver/` to `.git/info/exclude`; it is never committed.
+
+## 7. Report
+
+What was discovered, what was asked, the profile path, the installed agents, the settings changed, and anything the user should verify by hand (a CLI not signed in, a pipeline id guessed from a name).

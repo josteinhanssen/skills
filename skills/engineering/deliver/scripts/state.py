@@ -1,35 +1,43 @@
 #!/usr/bin/env python3
 """The deliver state file: .deliver/state.json.
 
-Usage (run from the repository root):
-  state.py init <batch-slug> --base <branch> --head <sha> [--session-dir <dir>] [--session-jsonl <file>] [--archive]
-                                                            # --archive moves an existing state file to .deliver/state-<old-slug>.json
-  state.py ticket <id> set key=value [key=value ...]      # fields per ticket
-  state.py ticket <id> get [key]
-  state.py batch set key=value [...]
-  state.py grant <resource> <agent-id> | release <resource>   # also writes/removes .deliver/grants/<resource>
-  state.py show                                            # table for `deliver status`
-  state.py path                                            # print the file path
+Usage (run from the workspace root the profile names):
+  state.py init --slug <slug> --adr <path> [--session-dir <dir>] [--session-jsonl <file>]
+  state.py batch set key=value [key=value ...]
+  state.py repo <name> set key=value [key=value ...]
+  state.py ticket <id> set key=value [key=value ...]
+  state.py show
 
-Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null).
-The file is small and rewritten whole; every write records `updatedAt`.
+Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null), so
+`blockedBy=["A-1"]` and `reviewers={"correctness":"x"}` work.
+
+Layout: {"batch": {...}, "repos": {name: {...}}, "tickets": {id: {...}}}. `init` sets
+`batch.startedAt`; `batch set phase=delivered` also sets `batch.closedAt`. `state.py` accepts any
+key, but warns on one outside reference/run.md's State keys table, since `cost.py` and `status`
+read only those.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-KNOWN_TICKET_KEYS = {"spec","model","phase","pr","head","merged","sandbox","rounds","rulings","findingsAfterMerge","agent","plannerAgents","reviewerAgents","judgeAgents","implementerAgents","specReview","report","lastReport","volume","slug","blockedBy","respawns","merged1","merged2","pr1","pr2","head1","head2"}
-GRANTS = Path(".deliver/grants")
-
-
-def grant_path(resource: str) -> Path:
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in resource)
-    return GRANTS / safe
-
 STATE = Path(".deliver/state.json")
+
+KNOWN_BATCH_KEYS = {
+    "slug", "adr", "phase", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
+    "weeklyAtStart", "weeklyCap", "reviewers", "fixer", "confirm", "followUps",
+}
+KNOWN_REPO_KEYS = {
+    "path", "into", "batchBranch", "baseHead", "scratch", "reviewedHead", "pr",
+    "mergedHead", "deployRuns",
+}
+KNOWN_TICKET_KEYS = {
+    "repo", "phase", "blockedBy", "branch", "worktree", "agent", "reviewer", "head",
+    "flags", "weeklyAtEnd", "respawns",
+}
 
 
 def now() -> str:
@@ -38,7 +46,7 @@ def now() -> str:
 
 def load() -> dict:
     if not STATE.exists():
-        sys.exit(f"no state file at {STATE}; run `deliver setup` or `state.py init`")
+        sys.exit(f"no state file at {STATE}; run `state.py init` first")
     return json.loads(STATE.read_text(encoding="utf-8"))
 
 
@@ -55,151 +63,127 @@ def parse_value(raw: str):
         return raw
 
 
-def apply_sets(target: dict, pairs: list[str], warn_unknown: bool = False) -> None:
+def apply_sets(target: dict, pairs: list[str], known: set[str]) -> None:
     for pair in pairs:
         if "=" not in pair:
             sys.exit(f"expected key=value, got {pair!r}")
         key, raw = pair.split("=", 1)
-        if warn_unknown and key not in KNOWN_TICKET_KEYS:
+        if key not in known:
             print(f"warning: {key} is not a key cost.py or status reads (see reference/run.md, State keys)", file=sys.stderr)
         target[key] = parse_value(raw)
 
 
-def cmd_init(args: list[str]) -> None:
-    if not args:
-        sys.exit("init needs a batch slug")
-    slug, opts = args[0], args[1:]
-    base = head = session_dir = session_jsonl = None
-    archive = False
-    while opts:
-        flag = opts.pop(0)
-        if flag == "--base":
-            base = opts.pop(0)
-        elif flag == "--head":
-            head = opts.pop(0)
-        elif flag == "--session-dir":
-            session_dir = opts.pop(0)
-        elif flag == "--session-jsonl":
-            session_jsonl = opts.pop(0)
-        elif flag == "--archive":
-            archive = True
-        else:
-            sys.exit(f"unknown option {flag}")
+def cmd_init(args: argparse.Namespace) -> None:
     if STATE.exists():
-        if not archive:
-            sys.exit(f"{STATE} exists; pass --archive to move it to .deliver/state-<old-slug>.json first")
-        old = json.loads(STATE.read_text(encoding="utf-8"))
-        old_slug = (old.get("batch") or {}).get("slug") or "previous"
-        target = STATE.with_name(f"state-{old_slug}.json")
-        if target.exists():
-            sys.exit(f"{target} exists; refusing to overwrite the archive")
-        STATE.rename(target)
-        print(f"archived previous state to {target}")
+        sys.exit(f"{STATE} exists; remove it to start a new batch")
     state = {
-        "batch": {"slug": slug, "base": base, "head": head, "createdAt": now(), "startedAt": now(), "closedAt": None,
-                  "phase": "planning", "sessionDir": session_dir, "sessionJsonl": session_jsonl, "runOfRecord": None},
+        "batch": {
+            "slug": args.slug,
+            "adr": args.adr,
+            "phase": None,
+            "startedAt": now(),
+            "closedAt": None,
+            "sessionDir": args.session_dir,
+            "sessionJsonl": args.session_jsonl,
+        },
+        "repos": {},
         "tickets": {},
-        "grants": {},
-        "followUps": [],
     }
     save(state)
-    print(f"initialised {STATE} for batch {slug}")
+    print(f"initialised {STATE} for batch {args.slug}")
 
 
-def cmd_ticket(args: list[str]) -> None:
-    if len(args) < 2:
-        sys.exit("ticket <id> set|get ...")
-    ticket, action, rest = args[0], args[1], args[2:]
+def cmd_batch(args: argparse.Namespace) -> None:
     state = load()
-    entry = state["tickets"].setdefault(
-        ticket,
-        {"spec": None, "model": None, "phase": "planned", "agent": None, "pr": None, "head": None,
-         "rounds": 0, "rulings": 0, "lastReport": None, "merged": None},
-    )
-    if action == "set":
-        apply_sets(entry, rest, warn_unknown=True)
-        save(state)
-        print(json.dumps({ticket: entry}, indent=2, ensure_ascii=False))
-    elif action == "get":
-        print(json.dumps(entry.get(rest[0]) if rest else entry, indent=2, ensure_ascii=False))
-    else:
-        sys.exit(f"unknown ticket action {action}")
-
-
-def cmd_batch(args: list[str]) -> None:
-    state = load()
-    if args and args[0] == "set":
-        apply_sets(state["batch"], args[1:])
-        if state["batch"].get("phase") == "closed" and not state["batch"].get("closedAt"):
-            state["batch"]["closedAt"] = now()
-        save(state)
+    apply_sets(state["batch"], args.pairs, KNOWN_BATCH_KEYS)
+    if state["batch"].get("phase") == "delivered" and not state["batch"].get("closedAt"):
+        state["batch"]["closedAt"] = now()
+    save(state)
     print(json.dumps(state["batch"], indent=2, ensure_ascii=False))
 
 
-def cmd_grant(args: list[str]) -> None:
-    if len(args) != 2:
-        sys.exit("grant <resource> <agent-id>")
-    resource, agent = args
+def cmd_repo(args: argparse.Namespace) -> None:
     state = load()
-    holder = state["grants"].get(resource)
-    if holder:
-        sys.exit(f"{resource} is held by {holder['agent']} since {holder['since']}")
-    record = {"resource": resource, "agent": agent, "since": now(), "runs": 1}
-    state["grants"][resource] = record
+    entry = state["repos"].setdefault(args.name, {})
+    apply_sets(entry, args.pairs, KNOWN_REPO_KEYS)
     save(state)
-    GRANTS.mkdir(parents=True, exist_ok=True)
-    grant_path(resource).write_text(json.dumps(record) + "\n", encoding="utf-8")
-    print(f"granted {resource} to {agent} ({grant_path(resource)})")
+    print(json.dumps({args.name: entry}, indent=2, ensure_ascii=False))
 
 
-def cmd_release(args: list[str]) -> None:
-    if len(args) != 1:
-        sys.exit("release <resource>")
+def cmd_ticket(args: argparse.Namespace) -> None:
     state = load()
-    removed = state["grants"].pop(args[0], None)
+    entry = state["tickets"].setdefault(args.id, {})
+    apply_sets(entry, args.pairs, KNOWN_TICKET_KEYS)
     save(state)
-    if grant_path(args[0]).exists():
-        grant_path(args[0]).unlink()
-    print(f"released {args[0]}" if removed else f"{args[0]} was not held")
+    print(json.dumps({args.id: entry}, indent=2, ensure_ascii=False))
 
 
-def cmd_show(_: list[str]) -> None:
+def cmd_show(_: argparse.Namespace) -> None:
     state = load()
     batch = state["batch"]
-    print(f"batch {batch['slug']}  base {batch['base']} @ {batch['head']}  updated {state.get('updatedAt')}")
-    if batch.get("runOfRecord"):
-        print(f"run of record: {batch['runOfRecord']}")
+    print(
+        f"batch {batch.get('slug')}  phase {batch.get('phase')}  adr {batch.get('adr')}  "
+        f"weekly {batch.get('weeklyAtStart')}->{batch.get('weeklyCap')}  "
+        f"started {batch.get('startedAt')}  closed {batch.get('closedAt') or ''}"
+    )
+    for name, r in state["repos"].items():
+        print(
+            f"  repo {name:<14} into {r.get('into')}  batchBranch {r.get('batchBranch')}  "
+            f"baseHead {str(r.get('baseHead') or '')[:8]}  reviewedHead {str(r.get('reviewedHead') or '')[:8]}  "
+            f"pr {r.get('pr')}"
+        )
     print()
-    header = f"{'ticket':<12} {'phase':<14} {'model':<6} {'agent':<18} {'pr':<6} {'head':<9} {'rounds':<6} {'rulings':<7} last report"
+    header = f"{'ticket':<12} {'repo':<12} {'phase':<10} {'flags':<8} head"
     print(header)
     print("-" * len(header))
     for tid, t in state["tickets"].items():
-        print(
-            f"{tid:<12} {str(t.get('phase')):<14} {str(t.get('model')):<6} {str(t.get('agent')):<18} "
-            f"{str(t.get('pr')):<6} {str(t.get('head') or '')[:8]:<9} {str(t.get('rounds')):<6} "
-            f"{str(t.get('rulings')):<7} {t.get('lastReport') or ''}"
-        )
-    if state["grants"]:
-        print()
-        for resource, holder in state["grants"].items():
-            print(f"grant {resource}: {holder['agent']} since {holder['since']}")
-    if state["followUps"]:
-        print()
-        for item in state["followUps"]:
-            print(f"follow-up: {item}")
+        flags = t.get("flags")
+        flags_str = str(len(flags)) if isinstance(flags, list) else ("" if flags is None else str(flags))
+        print(f"{tid:<12} {str(t.get('repo')):<12} {str(t.get('phase')):<10} {flags_str:<8} {str(t.get('head') or '')[:8]}")
 
 
-COMMANDS = {
-    "init": cmd_init,
-    "ticket": cmd_ticket,
-    "batch": cmd_batch,
-    "grant": cmd_grant,
-    "release": cmd_release,
-    "show": cmd_show,
-    "path": lambda _: print(STATE),
-}
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_init = sub.add_parser("init")
+    p_init.add_argument("--slug", required=True)
+    p_init.add_argument("--adr", required=True)
+    p_init.add_argument("--session-dir")
+    p_init.add_argument("--session-jsonl")
+    p_init.set_defaults(func=cmd_init)
+
+    p_batch = sub.add_parser("batch")
+    batch_sub = p_batch.add_subparsers(dest="action", required=True)
+    p_batch_set = batch_sub.add_parser("set")
+    p_batch_set.add_argument("pairs", nargs="*")
+    p_batch_set.set_defaults(func=cmd_batch)
+
+    p_repo = sub.add_parser("repo")
+    p_repo.add_argument("name")
+    repo_sub = p_repo.add_subparsers(dest="action", required=True)
+    p_repo_set = repo_sub.add_parser("set")
+    p_repo_set.add_argument("pairs", nargs="*")
+    p_repo_set.set_defaults(func=cmd_repo)
+
+    p_ticket = sub.add_parser("ticket")
+    p_ticket.add_argument("id")
+    ticket_sub = p_ticket.add_subparsers(dest="action", required=True)
+    p_ticket_set = ticket_sub.add_parser("set")
+    p_ticket_set.add_argument("pairs", nargs="*")
+    p_ticket_set.set_defaults(func=cmd_ticket)
+
+    p_show = sub.add_parser("show")
+    p_show.set_defaults(func=cmd_show)
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        sys.exit(__doc__)
-    COMMANDS[sys.argv[1]](sys.argv[2:])
+    main()

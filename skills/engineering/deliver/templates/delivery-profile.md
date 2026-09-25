@@ -1,102 +1,80 @@
 # Delivery profile
 
-Read by `/deliver`; written by `/deliver setup`. Every field is a fact or a command. Write "none" where a field does not apply.
+Read by `/deliver`; written by `/deliver setup`. Every field is a fact or a copy-pasteable command with placeholders in braces. Write "none" where a field does not apply, so a reader knows it was considered. A sentence about a pipeline, a policy or a gate names the file and line that makes it true.
+
+## Workspace
+
+- Workspace root (holds `.deliver/`): {path}
+- ADR location: {path; say if no repository tracks it}
 
 ## Tracker
 
 - Adapter: {linear-mcp | github-issues | files}
-- Team or repository: {value}
-- Ticket id pattern: {for example MSITE-123}
-- Labels the skill sets: {ready-for-agent, in-review}
-- Where specs are linked from: {ticket comment | description}
+- Team: {value}
+- Ticket id pattern: {for example ATE-123}
+- States: in progress {name}; in review {name}; done {name}; backlog {name}
+- Risk labels: {risk:auth, risk:concurrency, risk:migration, risk:data-loss}; created by `/deliver` if missing: {yes | no}
 
-## VCS host
+## Repositories
 
-- Host: {azure-devops | github}
-- Organisation, project, repository names exactly as the CLI needs them: {values}
+One block per repository, in delivery order (the first one's batch PR merges first).
+
+### {name}
+
+- Path: {path}
+- Host: {azure-devops | github}; organisation, project and repository exactly as the CLI needs them: {values}
+- Integration branch: {branch} (`/deliver --into` overrides it per run)
+- Batch branch pattern: `batch/{slug}`
+- Ticket branch pattern: `{feature/{ticket}}`
+- Fix branch pattern: `fix/{slug}`
 - Create PR: `{command with {branch} {target} {title} {body}}`
-- Complete PR, ticket kind: `{command}` (strategy: {squash | merge})
-- Complete PR, batch kind: `{command}` (strategy: {merge})
-- Delete remote branch: `{command}`
-- PR state lookup by source branch: `{command}` (used by the sweep)
+- PR status (CI and policy builds): `{command with {pr}}`; done when {field and value}
+- Vote: `{command}`; who may vote: {the creator's vote counts | a named reviewer, which makes it a stop}
+- Complete PR with a merge commit: `{command}`
+- Required policy builds: {pipeline and the file:line that requires it | none}
+- Deploy: {automatic on merge to the integration branch | queued by hand}
+  - Queue: `{command}` {or none}
+  - Watch: `{command with {run-id} or by commit}`; succeeded when {field and value}
+  - After deploy: {steps, e.g. a reseed pipeline, with commands | none}
 - PR description limit: {characters}
-
-## Branch model
-
-- Integration branch: {name}
-- Batch branch: {none | pattern}, used when: {condition}
-- Ticket branch pattern: {feature/{ticket}}
-- Multi-PR ticket branch pattern: {feature/{ticket}-{n}}
 
 ## Test rungs
 
-| Rung | Command | Duration | Exclusive |
+| Rung | Repository | Command | Duration |
 |---|---|---|---|
-| unit | `{command}` | {seconds} | no |
-| targeted | `{command with {spec}}` | {seconds} | no |
-| authoritative | `{command}` | {minutes} | yes |
-| {other} | `{command}` | | {yes/no} |
+| targeted | {repo} | `{command with {file}}` | {seconds} |
+| unit | {repo} | `{command}` | {seconds} |
+| full | {repo} | `{command}` | {minutes} |
 
-- Authoritative cadence: {per PR | per batch}
-- Typechecks (all must pass on the final head): `{commands}`
-- Invariants (each a command that fails loudly): `{commands}`
-- Dead-declaration detector: `{command, filtered to changed files}`
-- Known base flakes and how to attribute them: {list}
+- Typechecks, formatter, linters (all must pass on a final head): `{commands}`
+- Invariants (each a command that fails loudly): `{commands | none}`
+- Worker cap for an agent's multi-file run: {for example --maxWorkers=4}
+- Known flakes and how to attribute them: {list | none}
 
-## Sandbox conventions
+## Sandbox
 
-- Worktree path pattern: `{repo}/.worktrees/{ticket}-{side}`
-- Port ranges: dev {from-to}; test runner {from-to}
+- Worktree path pattern: `{repo}/.worktrees/{ticket}`; orchestrator scratch: `{repo}/.worktrees/batch-{slug}`; fixer: `{repo}/.worktrees/fix-{slug}`
+- Port ranges: {per purpose}
 - Database naming: {pattern | none}
-- Cache directories that must be per-worktree: {list}
-- Dependency install: `{command}`; shared-symlink rule: {text}
+- Cache directories that must be per worktree: {list}
+- Dependency install: `{command}`; symlink rule: {text}
+- Silence threshold before a liveness check: {minutes}
 
-## External review tool
+## Quality
 
-- Tool: {name | none}
-- Limits: {file count, rate limits, latency}
-- Policy: {per ticket PR | per batch PR | never}
+- Standards documents: {paths | none}
+- Shared-code locations reviewers search for reuse: {paths, e.g. components/ui, src/lib}
+- File size threshold: {400} lines; function size threshold: {50} lines
 
-## Deploy
+## Never
 
-- Queue: `{command}` per side
-- Watch: `{command with {run-id}}`
-- After: {what to verify}
+What no agent does in this project, beyond the skill's own rules: {e.g. touch the user's local database, target test or prod branches, queue prod deploys, print .env values}
 
 ## Cleanup
 
 - Protected branches never deleted: {list}
 - Worktrees never removed: {list}
-- Sweep rule: PR completed, tree clean, head equals merged commit
 
-## Bookkeeping files edited by every ticket
+## Cost baseline
 
-- {path}: {sentence shape to use}
-- {path}: {rule}
-
-## Standards documents reviewers read
-
-- {paths}
-
-## UI hook
-
-- impeccable: {on | off}; when on: `critique` before spec, `audit` before handoff, design authority at {path or URL}
-
-## Delivery log
-
-- Path: {path}
-
-## Baseline for cost comparison
-
-- {figures or "none"}
-
-
-## Sizing
-
-- Volume threshold for one-pass PR review: a ticket whose estimated diff exceeds 300 changed lines or 8 files is marked `volume: large` in the plan and the spec and gets one full review pass per axis; the pre-merge script and the mechanical checks carry the rest.
-
-## Machine resources
-
-- Worker cap for an agent's multi-file test run (e.g. `--maxWorkers=4`); the orchestrator's own checks keep the defaults because they run alone.
-- Concurrency probes (N suites at once): the grant name, the cap on N × workers, and the rule that no other agent starts a multi-file run or a production build while the grant file exists.
-- Measured limits: memory and CPU of the workstation, and what exhausted it last time.
+- {figures to compare `.deliver/costs.md` against, or none}

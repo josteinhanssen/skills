@@ -6,180 +6,87 @@ Reusable Claude Code skills. Install with the skills.sh CLI:
 npx skills add josteinhanssen/skills
 ```
 
-Skills live under `skills/<category>/<name>/SKILL.md`, the layout the installer expects, and are linked into `~/.claude/skills/`.
+Skills live under `skills/<category>/<name>/SKILL.md`, the layout the installer expects, and are linked into `~/.claude/skills/`. The words the skills use are defined in [CONTEXT.md](CONTEXT.md); decisions about their design are in [docs/adr/](docs/adr/).
 
 | Skill | Purpose |
 |---|---|
-| `engineering/deliver` | Plan, spec, implement, review, merge and close a batch of tickets with sub-agents, at the lowest token cost that keeps quality |
+| `engineering/deliver` | Take the ADR and tickets from a grilling session to the integration branch and its dev deploy with sub-agents: Opus builds, Haiku flags, one strong review per batch |
 
-## deliver — design
+## deliver: design
 
-`/deliver` turns a goal into merged, verified, cleaned-up work. It puts the expensive model where judgment happens (planning, plan review, PR review, rulings) and a cheaper model where the judgment has already been written down (implementation). It was distilled from a delivery wave that merged twelve tickets in a day with seven parallel agents; that wave's numbers are the baseline it is measured against.
+The session that ran the grilling and wrote the ADR and the tickets runs `/deliver <ADR or tickets>`. From then on it only stops when it needs the user. It checks each ticket against a bar and fixes the tickets in the tracker. It builds them one or two at a time onto a batch branch, reviews the batch once in depth, merges it into the integration branch, and watches the deploy.
 
-### What it is built on
+### Why it looks like this
 
-`deliver` extends the [mattpocock/skills](https://github.com/mattpocock/skills) set rather than replacing it. `to-spec` and `to-tickets` remain the planning front end (a spec, then tracer-bullet tickets with blocking edges); `grilling` runs the interview when the input is only a goal; `code-review`'s Standards-and-Spec split and its verbatim-report rule are the reviewer model; `tdd`, `diagnosing-bugs`, `resolving-merge-conflicts` and `codebase-design` are called where an implementer or planner needs them. What those skills lack, and `deliver` adds: a spec-depth gate, model and effort control per role, an orchestrator loop with file-backed state, exclusive-resource grants, post-merge hygiene, and cost accounting. Frontend work can opt into `impeccable` through the project profile.
+The previous version (tag `deliver-v1`) planned a batch, then wrote a spec per PR that settled every judgment before a small-model implementer typed it. On the ATE-488 batch (2026-09-24/25) that merged nine PRs with no defects found after merge, but it cost about 33M weighted tokens per merged PR and ran into the user's 5-hour and weekly limits. Sub-agent cost by role:
 
-### The cost model
+| Role | Agents | Weighted | Share of sub-agents |
+|---|---|---|---|
+| Spec planner | 14 | 284.8M | 70% |
+| Implementer | 10 | 50.7M | 12% |
+| Gate review and confirm passes | 17 | 27.0M | 7% |
+| Batch planner and plan review | 2 | 16.2M | 4% |
+| PR review, both axes | 31 | 16.5M | 4% |
+| Other (grilling exploration, UI critique) | 11 | 13.2M | 3% |
 
-Where a delivery wave's sub-agent tokens went before this skill existed (seven implementers and their reviewers, one day):
+The spec planners wrote each change in full, pinned it by hash, measured mutation probes and replayed it, and then the implementer did the same work again. PR review, the part that most looked like a cost worth cutting, was 4%. What made everything expensive was context size times calls. Planners carried 534k tokens of context on every call, and the orchestrator 509k across 526 calls. Weighted tokens here are input 1×, cache read 0.1×, cache write 2×, output 5×.
 
-| Bucket | Share |
-|---|---|
-| Implementers on the large model | ~38% |
-| Implementers on the small model plus one large-model sweep | ~16% |
-| Substitute reviewers, two to five passes per PR | ~45% |
+So the grilling is the plan. The decisions a spec used to make, the implementer now makes and records; review moves from per PR to per batch; and every agent's context stays small. ADR [0001](docs/adr/0001-deliver-builds-from-tickets.md) records the trade: the pre-code gate did find real defects (a measured deadlock, a token-policy hole), and those now have to come from risk-tag tests or the final review.
 
-Review rounds cost as much as implementation, and the round count came from judgment calls the tickets left open (caps, what stays in the browser, fixture shape), not from the model. Tightly scoped tickets on the small model closed in one or two rounds at a fifth of the cost. So the levers are:
+### The flow
 
-1. The small model implements, from a spec that contains no open judgment.
-2. One large-model review pass per axis, with mechanical checks replacing the rest.
-3. A hard cap on review rounds: two full passes, then a closing round, then merge.
-4. The orchestrator's own context stays small: reports go to files, it reads bounded summaries.
+1. **Budget.** The orchestrator reads plan usage, proposes a weekly cap, and the user agrees once.
+2. **Intake.** Every ticket gets checked against the bar (behavioural acceptance criteria, blocking edges, one repository, risk tags, out of scope, an ADR link, about 400 lines) and fixed in the tracker. Tickets group into batches of up to 6 tickets or about 2,500 lines.
+3. **Per ticket.** A fresh implementer builds from the batch head and commits with a `Decisions:` list. A ticket reviewer writes up to 15 flags. The implementer fixes the flags it can confirm and answers the rest. `merge-ticket.sh` merges the ticket into the batch branch.
+4. **Final review.** The integration branch is merged in and the full tests run. A correctness reviewer and a quality reviewer read the whole batch in parallel and rule on every flag. Follow-ups outside the batch's own code become tickets.
+5. **Fix round.** One fixer, one round. The orchestrator reads the delta, and a confirm pass runs only after a Blocking finding.
+6. **Deliver.** One batch PR per repository with a merge commit, CI, the vote, a check that the merged tree is the reviewed tree, the deploy watched to success, tickets done, and a cost row.
 
-Not used: larger PRs (they cost more review rounds) and skipping review for "mechanical" tickets (reviewers found a real coverage loss on nearly every PR of the baseline wave, small-model tickets included).
+The session stops for the user only for a product or scope question, anything past the integration branch or touching secrets or shared databases, a finding that would change the ADR, a CI run or deploy that fails after its one fix attempt, and the weekly cap.
 
-Recomputed with `scripts/cost.py` (per-turn usage, the billed basis), the same wave looks different: implementation is over 80% of weighted cost on every ticket and review 10 to 20%, because cost scales with turns times context size and a long implementation run drags a large context through hundreds of turns. A small-model ticket that ran 400 tool calls cost more than a large-model ticket that ran 150. So the first lever is the number of turns and the size of the context an implementer carries (a complete spec, targeted reads, quiet commands, fresh reviewers), the second is the model, and the third is the round cap.
+### Roles
 
-The metric is tokens per merged ticket, split into plan, implement, review and orchestrate, reported raw and cost-weighted (cache reads about 0.1×, cache writes about 2×, output about 5×), with quality alongside as findings per PR and defects found after merge. `scripts/cost.py` computes it by summing every turn's usage block from the session transcripts, which is what is billed; those figures are much larger than the "sub-agent tokens" a completion notice shows, so a baseline is only comparable when it was computed with the same script. Target against the baseline: half the review bucket and most implementation on the small model, which is roughly a 50 to 60% cut if quality holds.
+| Role | Model | Scope | Tools |
+|---|---|---|---|
+| Orchestrator | the user's session | the whole run | everything, including the tracker |
+| Implementer | Opus 5.5, high | one ticket, resumed once for flags | files, shell, skills |
+| Ticket reviewer | Haiku 4.5 | one ticket's diff, one pass | read, shell, write its flag file |
+| Correctness reviewer | Opus 5.5, high | the whole batch | read, shell, write its findings |
+| Quality reviewer | Opus 5.5, high | the whole batch, against its own fixed bar | read, shell, write its findings |
+| Fixer | Opus 5.5, high | the one fix round, or one CI or deploy failure | files, shell, skills |
+
+No role gets MCP servers, and none spawns another agent. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
+
+### Cost controls
+
+- `autoCompactWindow: 300000` in the user settings caps every session and agent at 300k tokens of context.
+- Agents are fresh per ticket or per batch and report in under 300 words; the orchestrator never reads a transcript.
+- An explicit `tools` list per agent keeps MCP tool definitions out of every call.
+- One or two tickets at a time, each from the batch head: no rebases, grants or locks.
+- `autoContinueAtUsageLimit: true` lets a batch wait out a 5-hour limit; the weekly cap stops it.
+- `scripts/cost.py` appends one row per batch to `.deliver/costs.md`: weighted tokens per ticket, an Opus-equivalent figure that prices Haiku and Sonnet turns at their share of Opus, and the weekly percentage per ticket. The target is 12M weighted per ticket or less over the first three batches.
 
 ### Commands
 
-One skill, six sub-commands, each runnable alone:
+| Command | What it does |
+|---|---|
+| `/deliver <ADR \| tickets> [--into <branch>]` | the whole run, resumable from `.deliver/state.json` |
+| `/deliver status` | prints the batch from the state file, no model work |
+| `/deliver setup` | writes or migrates the project profile, installs the role agents, checks the two settings |
 
-| Command | What it does | Model work |
-|---|---|---|
-| `setup` | Interviews for the project profile, installs the role templates into the project's `.claude/agents/` | one large-model turn |
-| `plan` | A goal, a tracker issue or a spec file becomes a reviewed plan of tickets with blocking edges, file overlap and a model per ticket | planner + plan-reviewer |
-| `spec` | One ticket becomes a spec file the small model can execute; gated by the plan-reviewer's checklist | planner + plan-reviewer |
-| `run` | Orchestrates implementation of a batch to merge: spawns implementers, grants exclusive resources, routes reviews, merges, verifies | orchestrator + implementers + reviewers + judge |
-| `close` | Authoritative verification on the merged head, cleanup of worktrees and branches, deploy per profile, tracker comments, cost table | orchestrator |
-| `status` | Reads the state file and prints the batch, no model work beyond formatting | none |
+### History
 
-`plan` accepts all three inputs and says which path it took; a bare goal first runs `grilling` and `to-spec`, then `to-tickets`.
-
-### Roles and models
-
-Installed as agent definitions with `model` and `effort` set, so the split is enforced rather than remembered.
-
-The templates pin model IDs, not aliases: large is Opus 5.5 (`claude-opus-5-5`), small is Sonnet 5 (`claude-sonnet-5`). An alias resolves to whatever the running Claude Code maps it to, and versions differ (2.1.278 maps `opus` to Opus 5, 2.1.280 to Opus 5.5), so a pinned ID keeps every agent in a batch on the model the delivery log names. Trials one to seven ran on the `opus` and `sonnet` aliases. The implementer stays on Sonnet 5 for now: Opus 5.5 costs twice as much on input and output ($4/$20 per MTok against $2/$10) and the same on cache reads ($0.20), which are most of an implementer's bill. Whether that makes Opus 5.5 implementers cheaper per merged ticket is for a trial to measure.
-
-| Role | Default | Spawned with |
-|---|---|---|
-| Planner | large, extra high | the goal or spec, the profile, the repo |
-| Plan-reviewer | large, high | the plan or spec, the checklist; verdict only, never edits |
-| Implementer | small, high | one spec file, the profile extract, the sandbox assignment |
-| Escalation implementer | large, high | the same, when a ruling needs design judgment a spec cannot express |
-| Standards reviewer / Spec reviewer | large, medium | repo path, PR id, base and head refs, changed files, the spec, totals; never the implementation transcript (`fork_turns: none`) |
-| Ruling judge | large, extra high | the spec and one question, when an implementer reports BLOCKED; the answer is written into the spec so it is never asked twice |
-| Orchestrator | large, high (small is a later experiment) | the profile, the state file |
-
-Effort is spent where a wrong answer is expensive to discover later: the planner's unwritten judgment becomes a review round, the judge's ruling is rare and final. The orchestrator's work is procedural and runs for hundreds of turns, so its reasoning depth stays ordinary and its context stays small.
-
-The implementer template absorbs the context-budget rules of `implement-efficiently`, which it supersedes.
-
-### The spec file
-
-One spec equals one PR equals one implementer run. A ticket that needs several PRs gets several specs. Specs are committed under the project's docs tree while live and deleted on merge; the ticket's completion comment links the spec's last commit. Sections:
-
-- Goal and non-goals; Model (small or large) and Size (files, tests)
-- Rulings: every judgment call, already decided
-- Files to touch; files not to touch
-- Tests by name, what each proves, and at which rung
-- Fixtures and harnesses to reuse, with paths
-- Acceptance checks as commands
-- Mutation probes to run
-- Bookkeeping edits (ledger row, budget file, docs)
-- Out of scope, and where it is ticketed
-- Reviewer focus: what the Spec reviewer verifies first
-
-The gate: the plan-reviewer ticks a checklist, one item of which is "contains no sentence that asks the implementer to decide". The plan-reviewer also checks blocking edges, file overlap between parallel tickets, and the model assignment, and can only send a plan back, never edit it.
-
-### The project profile
-
-`docs/agents/delivery-profile.md`, written by `setup`, read once per phase and pasted into briefs in extracts. Fields:
-
-- Tracker adapter: Linear MCP, GitHub issues, or files only
-- VCS host commands for PR create and complete, and the merge strategy per PR kind (squash for ticket PRs, merge commit for batch PRs)
-- Branch model: direct PRs to the integration branch, or a batch branch with one external review per batch
-- Test rungs as commands (unit, targeted, authoritative) and which are exclusive resources
-- Sandbox conventions per agent: worktree path pattern, port ranges, database naming
-- External review tool and its limits (for example, a tool that skips PRs above 150 files)
-- Deploy step after merge, watched by run id
-- Cleanup exceptions: protected branches, prototype branches, worktrees to keep
-- UI hook: whether tickets that touch UI run `impeccable critique` before spec and `impeccable audit` before handoff
-
-Everything project-specific lives here. The skill's own logic never names a tracker, a host or a review tool.
-
-### The orchestrator loop
-
-State lives in files so any phase can resume cold: a human-readable delivery log, a machine-readable `.deliver/state.json` (per ticket: spec path, agent id, phase, head, PR id, grants, last report path), and one report file per agent turn. Agents are told from the start that the orchestrator may vanish and must reach a mergeable state on written rulings.
-
-The loop reacts to agent reports:
-
-- `READY-TO-MERGE`: verify the head (conflict markers, the profile's invariants, the spec's cheap acceptance commands), merge, remove the worktree and both branches, comment on the ticket
-- `BLOCKED`: spawn the ruling judge, write the ruling into the spec, resume or respawn the implementer
-- silence past a threshold: check the agent is alive; respawn once from the spec and the on-disk state
-
-The orchestrator runs the authoritative test run itself on the merged head, per the profile's cadence (per PR, or per batch), instead of granting slots to agents. Agents run the cheap rung freely and the targeted rung only on what their spec names. The grant protocol remains for resources the profile lists as exclusive, and a grant is a file (`.deliver/grants/<resource>`) the waiting agent polls, so it works when the orchestrator has no channel to resume an agent. Merges go through `scripts/pre-merge.py` (explicit fetch of the PR's branch, changed files against the spec, production touches, verdict files) and `scripts/verify-head.sh`, then `pre-merge.py --post` proves the merged tree equals the verified head.
-
-### Gates and limits
-
-Mandatory regardless of model or ticket size: tests written with the change; one mutation proof per claim; every typecheck the profile lists; the two review axes; content verification on the merged head; the cleanup sweep.
-
-Fixed limits: one review pass on a plan or spec (a confirm pass on the delta only after a Blocking finding; the orchestrator closes the rest by reading the planner's delta); two full PR review passes (one for a `volume: large` ticket, sized by the estimated diff) then a closing round that is the orchestrator's own diff of the delta, never a third reviewer spawn; two rulings per ticket then back to planning; one respawn after a dead session; reviewer disagreement is settled by the judge, not the implementer. A small-model PR that fails review on design grounds goes back to the same agent with the ruling first; escalation only when the ruling itself needs design judgment.
-
-Human touchpoints: approve the plan once; be told about merges; deploys follow the profile.
-
-### Post-merge
-
-Cheap acceptance commands re-run on every merged head; the authoritative run per cadence. Then worktree and branch removal locally and remotely (never a forced removal of a dirty tree; anything dirty, detached or without a completed PR is reported instead), the deploy step, the tracker comment with figures, and the cost table.
-
-### The trial
-
-Four small tickets from the originating project, direct PRs to the integration branch with the external review tool per PR, large-model orchestrator. Success criteria, written into the delivery log before the trial starts: cost per merged ticket at or below half of the baseline's large-model tickets; zero findings after merge; at most two review rounds per PR. A small-model orchestrator is a second, separate experiment.
-
-#### Trial result (wave-n-trial, 2026-09-04)
-
-Four tickets, all merged with zero post-merge findings and at most two review rounds each. Weighted tokens (input 1x, cache reads 0.1x, cache writes 2x, output 5x): MSITE-232 12.4M, MSITE-236 9.9M, MSITE-237 14.5M, MSITE-233 31.7M, plus 13.8M of batch-level planning. Against the wave N baseline the large ticket came in a third cheaper than its nearest comparable (MSITE-226, 47.0M, same review-round count), and the small-model implementations cost a third of the comparable large-model ones in raw tokens, at one review round instead of two. The small tickets cost more than their baseline counterparts, because a spec phase of 35-53M raw tokens (two review passes) sat on top of a 20-24M implementation. The lever is the planning phase, not the implementer: a single confirm pass for tickets the plan reviewer already rated small would take most of the gap out.
-
-Defects found in the skill during the trial, fixed: reviewer verdicts delivered only as notifications (now files the implementer polls); reviewer ids unknown to the orchestrator when the implementer spawns reviewers (now listed in READY-TO-MERGE); the state keys `cost.py` attributes by were undocumented (now in `reference/run.md`, and `state.py` warns on others); a broken invariant run (runner stopped, no result line) read as a failure (rerun-once rule).
-
-#### Second trial (hygiene-1, 2026-09-07)
-
-Three tickets in four PRs, all merged with zero post-merge findings and at most two review rounds each, under the one-pass planning rule. Weighted: batch planning 16.0M, MSITE-240 14.0M, MSITE-238 28.3M, MSITE-234 33.8M, orchestrator 15.3M. The orchestrator's share fell by more than half against the first trial (34.2M), the planning phase stayed flat because Blocking findings earned confirm passes, and the small-model tickets cost more than the first trial's because they were much larger diffs (238: 67 collapse sites, 1,197 lines) and because implementers spawned a third reviewer pair for the closing round. The batch also produced the machine-resource rule (a concurrency probe overlapping other agents' suites exhausted 48 GB), the liveness rule (agent list, never transcript files), and the no-reset rule for respawn briefs, each learned the expensive way.
-
-#### Third trial (delivery-diagnostics, 2026-09-08)
-
-Ten tickets in batch-branch mode across two repositories (a Support role and capability, a uniform delivery description per publisher adapter, persisted delivered artefacts, dry-run and attempt-inspection endpoints, a seeded support account and an Amedia test newspaper, a capability gate, the diagnostics dialog in two languages, and a legacy-route removal). ≈277.7M weighted tokens, ≈27.8M per ticket against ≈35.8M in hygiene-1 and ≈29.1M in the first trial; the orchestrator's share 61.3M over 906 turns, about a third of it in the close (two CodeRabbit fixers, a CI-gate investigation, demo-tenant steps). Zero findings after merge on every ticket; CodeRabbit's four batch-PR findings all sat outside the specs' rulings. Fixes folded into the skill during the batch: the pre-merge placeholder matcher and finding counter, runner-managed lock directories, one planner per spec file in fix rounds, implementers never complete PRs, staged handback for two-repository tickets, a mutation probe in the closing round, and pipeline claims that name their yml line. Open: a resume channel for staged handbacks, and the close phase's own cost.
-
-#### Fourth trial (diagnostics-followups, 2026-09-09)
-
-Two follow-up tickets from the previous batch's first day in use — a dry run that keeps its artefacts through a validation refusal (backend, four adapters), and a document tab in the diagnostics dialog (frontend, one new surface) — run in **direct mode**: ticket PRs straight into the integration branch, the external review tool per PR, the branch policy on the backend PR, no batch branch. ≈79,925,141 weighted tokens, ≈39M per ticket against ≈27.8M in the ten-ticket batch; orchestrator 19,437,818. The lesson is the floor: a planned, spec'd, two-axis-reviewed ticket costs 20–30M whatever the batch size, and a two-ticket batch cannot amortise the plan or the close. Zero findings after merge; the external tool's three real findings (one backend, two UI-state) were again outside the specs' rulings. Landed in the skill: implementers propose rulings in the handback rather than editing the spec; profile claims about pipelines and gates name their yml line and are re-measured when a policy changes.
-
-#### Fifth trial (handoff-and-calendar, 2026-09-09)
-
-Three tickets in four direct PRs across both repositories: a layered print calendar (live answer persisted as the last known good, snapshot on outage, derived from the paper's print days otherwise; marking on three surfaces), formatted JSON payloads with a byte-exact copy and download path, and a publisher handoff bundle exported from the diagnostics dialog. All merged with zero findings after merge; no Blocking on any PR; the external review tool found four real defects the reviewers had not (a swallowed exception the base had logged, a `RangeError` on a malformed date, a spinner held after a throw, an overclaiming comment), each fixed or ruled in flight. Weighted: ≈112.6M excluding reviewers spawned by implementers, which `cost.py` cannot attribute (≈23.3M unassigned); ≈37.5M per ticket, ≈45M including them; orchestrator 484 turns, 30.4M.
-
-Defects found in the skill, fixed: the escalation implementer template told the agent to write its rulings into the spec (`01f934f`, rulings are proposed in the handback and ratified by the orchestrator); `pre-merge.py --post` compared the merged tree with the head's and failed whenever another PR had moved the target first (`a260f88`, it now compares with `git merge-tree` of the head onto the target's previous tip); the harness did not re-invoke an implementer whose last live child was a reviewer agent, so one ticket ended with verdicts on file and no handback (`10eb0f0`, implementers wait on verdict files with a background shell loop, and the orchestrator treats verdicts plus the PR as the handback when one was not woken). Recorded, not yet fixed: reviewer spawns by implementers reach the cost table only if the orchestrator copies their ids from the handback into the state file; the spec-writing bound on orchestrator hotfixes held (three planner rounds fixed what the orchestrator's earlier hotfixes had broken in the previous batch's specs), and three small post-review production hunks were judged by the orchestrator without a confirm reviewer, each with its reason in the log.
-
-#### Sixth trial (staff-facing-states, 2026-09-10)
-
-Five tickets in six slices, batch-branch mode across both repositories: an explicit unavailable state for symbols the library cannot draw (two-repository ticket with a staged handback), a terminal state for a failed image catalogue, WCAG-AA lifecycle chips through brand tokens, «Bytt bilde» on every photograph, and forty publisher failure codes translated at the UI boundary. Six ticket PRs reviewed by the agent reviewers only; two batch PRs carried the CodeRabbit pass (backend: an internal review failure, fixed by one nudge; frontend: one real defect in the retry path, fixed by one fixer on the batch branch and probed by the orchestrator). Zero findings after merge. Weighted: ≈131M excluding unattributed spawns (≈26M per ticket; ≈34M including), orchestrator 451 turns, 37.8M — the cheapest per-ticket figure so far, in the same mode delivery-diagnostics measured at ≈27.8M.
-
-Defects found in the skill, fixed: `sweep.py` now clears ignored build output before `git worktree remove` (`52c0539`; a backend worktree removal had left an orphan checkout). Held: implementers waiting on verdict files with background shell loops — every handback arrived (`10eb0f0` from the fifth trial). Recorded, not yet fixed: `cost.py` attributes only the `agent`, `plannerAgents` and `reviewerAgents` keys, so a two-slice ticket's second implementer, a fix implementer and the batch fixer land in the unassigned row (38.9M here); the plan reviewer's first pass found two Blocking items in a 1,352-line plan and four of six specs needed one Blocking fix each — the review rounds are earning their cost.
-
-#### Seventh trial (hygiene-2, 2026-09-14)
-
-Ten small tickets in nine PRs, batch-branch mode, over a moved base: the integration branch took a `dev` sync after the batch branches were cut, so the batch branches were fast-forwarded before `run` with every anchored path verified byte-identical across the move (specs keep their citations; only whole-suite totals go stale, and the briefs say so). Nine specs, one review pass each: three Blocking findings a reviewer alone would not have produced a fix for — a probe that could never go red (the guard it tested was invisible to the only test that could see it), a relative suite-lock path that would have run four backend suites concurrently, and an acceptance grep the spec's own doc comment tripped — each closed by the planner and a confirm pass. 32 PR verdicts, zero Blocking. CodeRabbit on the batch PRs: one valid security finding (a persisted pipeline credential left in the git config while PR-controlled tests run), fixed by one fixer on the batch branch; one declined with the ruling. The first policy builds with the contract comparer armed passed. Cost ≈14.8M weighted tokens per ticket excluding unattributed spawns, ≈16.5M including them — the cheapest per ticket so far, on the smallest tickets. Learned: implementers ignore the shell-loop wait instruction in the shared brief unless the same sentence is sent to them at spawn; the run-of-record scripts must be rebuilt in the batch's own scratchpad (the previous batch's were gone); `contract:check` on the `%20` frontend path needs a clone outside it; a PR description placeholder must be verified before `az repos pr create`, since the failure that leaves it empty is silent. Open: `cost.py` reads per-ticket `reviewerAgents` lists only, so reviewer ids recorded as a `reviewers` map land in the unassigned row until reshaped at close.
+`deliver-v1` (tag) is the plan, spec, run and close design with its seven trials, from the wave-N baseline through hygiene-2, and the lessons each one fed back into the skill. Read it with `git show deliver-v1:README.md`. The ATE-488 figures above are that design's last measurement.
 
 ### Repository layout
 
 ```
+CONTEXT.md                 the words the skill uses
+docs/adr/                  design decisions
 skills/engineering/deliver/
-  SKILL.md            command table and routing
-  agents/openai.yaml  interface shim for the installer
-  reference/          one playbook per sub-command
-  templates/          role agent definitions, the profile, the spec file, the delivery log
-  scripts/            state file, cost accounting, sweep, verification helpers
+  SKILL.md                 commands, words, principles
+  agents/openai.yaml       interface shim for the installer
+  reference/               run, status and setup playbooks
+  templates/               the profile and the five role agents
+  scripts/                 state file, ticket merge, merge verification, sweep, cost, quiet runner
 ```
