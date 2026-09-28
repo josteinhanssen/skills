@@ -23,9 +23,10 @@ checked. Every write holds a lock on .deliver/state.lock and replaces the file i
 Layout: {"batch": {...}, "repos": {name: {...}}, "tickets": {id: {...}}}. `init` sets
 `batch.startedAt`; `batch set phase=delivered` also sets `batch.closedAt`. `init` moves an
 existing state file into .deliver/archive/ when its batch is delivered or it was written by
-deliver-v1 (no `repos` key), and refuses while a batch is open. `state.py` accepts any
-key, but warns on one outside reference/run.md's State keys table, since `cost.py` and `status`
-read only those.
+deliver-v1 (no `repos` key), and refuses while a batch is open. Writes are checked against
+reference/run.md's State keys table, since `cost.py` and `status` read only those keys: a phase
+outside the table is refused, a key that looks like a misspelling of a listed one is refused with
+the listed name, and any other new key is stored with a warning.
 """
 from __future__ import annotations
 
@@ -46,16 +47,20 @@ SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
 
 KNOWN_BATCH_KEYS = {
     "slug", "adr", "phase", "owner", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
-    "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "reviewers", "fixer", "confirm", "followUps",
+    "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "reviewers", "fixer", "confirm", "clerks",
+    "followUps",
 }
 KNOWN_REPO_KEYS = {
     "path", "into", "batchBranch", "baseHead", "scratch", "reviewedHead", "pr",
     "mergedHead", "deployRuns",
 }
 KNOWN_TICKET_KEYS = {
-    "repo", "phase", "blockedBy", "branch", "worktree", "agent", "reviewer", "head",
-    "flags", "weeklyAtEnd", "respawns", "prodLines",
+    "repo", "phase", "blockedBy", "estimate", "branch", "worktree", "agent", "head",
+    "prodLines", "weeklyAtEnd", "respawns",
 }
+
+BATCH_PHASES = {"building", "final-review", "fixing", "delivering", "closing", "delivered", "paused"}
+TICKET_PHASES = {"queued", "building", "merged", "blocked"}
 
 # Keys an orchestrator has written where it meant a known one.
 KNOWN_MISTAKES = {
@@ -132,16 +137,31 @@ def parse_value(raw: str):
         return raw
 
 
-def apply_sets(target: dict, pairs: list[str], known: set[str]) -> None:
+def check_phase(phase, allowed: set[str]) -> None:
+    if phase not in allowed:
+        sys.exit(f"phase {phase!r} is not one of {', '.join(sorted(allowed))} (reference/run.md, State keys); nothing written")
+
+
+def apply_sets(target: dict, pairs: list[str], known: set[str], phases: set[str]) -> None:
+    """Check every pair before writing any, so a refused pair leaves the entry unchanged."""
+    parsed = []
     for pair in pairs:
         if "=" not in pair:
             sys.exit(f"expected key=value, got {pair!r}")
         key, raw = pair.split("=", 1)
-        if key not in known:
+        value = parse_value(raw)
+        if key == "phase" and not phases:
+            sys.exit("a repository has no phase; set the batch's or a ticket's phase instead; nothing written")
+        if key == "phase":
+            check_phase(value, phases)
+        elif key not in known:
             close = KNOWN_MISTAKES.get(key) or next(iter(difflib.get_close_matches(key, sorted(known), n=1)), None)
-            hint = f"; did you mean {close}?" if close else ""
-            print(f"warning: {key} is not a key cost.py or status reads (see reference/run.md, State keys){hint}", file=sys.stderr)
-        target[key] = parse_value(raw)
+            if close:
+                sys.exit(f"{key} looks like a misspelling of {close}, which cost.py and status read; nothing written")
+            print(f"warning: {key} is not a key cost.py or status reads (see reference/run.md, State keys)", file=sys.stderr)
+        parsed.append((key, value))
+    for key, value in parsed:
+        target[key] = value
 
 
 def cmd_init(args: argparse.Namespace) -> None:
@@ -181,7 +201,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
     with locked():
         state = load()
         check_owner(state)
-        apply_sets(state["batch"], args.pairs, KNOWN_BATCH_KEYS)
+        apply_sets(state["batch"], args.pairs, KNOWN_BATCH_KEYS, BATCH_PHASES)
         if state["batch"].get("phase") == "delivered" and not state["batch"].get("closedAt"):
             state["batch"]["closedAt"] = now()
         save(state)
@@ -200,6 +220,7 @@ def cmd_claim(args: argparse.Namespace) -> None:
         previous = batch.get("owner")
         batch["owner"] = SESSION
         if args.to_phase:
+            check_phase(args.to_phase, BATCH_PHASES)
             batch["phase"] = args.to_phase
         save(state)
     taken = f", taken over from {previous}" if previous and previous != SESSION else ""
@@ -211,7 +232,7 @@ def cmd_repo(args: argparse.Namespace) -> None:
         state = load()
         check_owner(state)
         entry = state["repos"].setdefault(args.name, {})
-        apply_sets(entry, args.pairs, KNOWN_REPO_KEYS)
+        apply_sets(entry, args.pairs, KNOWN_REPO_KEYS, set())
         save(state)
     print(json.dumps({args.name: entry}, indent=2, ensure_ascii=False))
 
@@ -221,7 +242,7 @@ def cmd_ticket(args: argparse.Namespace) -> None:
         state = load()
         check_owner(state)
         entry = state["tickets"].setdefault(args.id, {})
-        apply_sets(entry, args.pairs, KNOWN_TICKET_KEYS)
+        apply_sets(entry, args.pairs, KNOWN_TICKET_KEYS, TICKET_PHASES)
         save(state)
     print(json.dumps({args.id: entry}, indent=2, ensure_ascii=False))
 
@@ -259,13 +280,12 @@ def cmd_show(_: argparse.Namespace) -> None:
             f"pr {r.get('pr')}"
         )
     print()
-    header = f"{'ticket':<12} {'repo':<12} {'phase':<10} {'flags':<8} head"
+    header = f"{'ticket':<12} {'repo':<12} {'phase':<10} {'lines/est':<10} head"
     print(header)
     print("-" * len(header))
     for tid, t in state["tickets"].items():
-        flags = t.get("flags")
-        flags_str = str(len(flags)) if isinstance(flags, list) else ("" if flags is None else str(flags))
-        print(f"{tid:<12} {str(t.get('repo')):<12} {str(t.get('phase')):<10} {flags_str:<8} {str(t.get('head') or '')[:8]}")
+        lines = f"{t.get('prodLines', '-')}/{t.get('estimate', '-')}"
+        print(f"{tid:<12} {str(t.get('repo')):<12} {str(t.get('phase')):<10} {lines:<10} {str(t.get('head') or '')[:8]}")
 
 
 def build_parser() -> argparse.ArgumentParser:

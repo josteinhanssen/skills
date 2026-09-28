@@ -1,6 +1,6 @@
 ---
 name: deliver
-description: Take the ADR and tickets from a grilling session to the integration branch and its dev deploy with sub-agents. Opus builds each ticket, Haiku flags it once, tickets collect on a batch branch, and one correctness and one quality review on Opus gate the batch. Sub-commands run (the default), status, setup.
+description: Take the ADR and tickets from a grilling session to the integration branch and its dev deploy with sub-agents. Opus builds each ticket and answers its risk checks, tickets collect on a batch branch, and one correctness and one quality review on Opus gate the batch. Sub-commands run (the default), status, setup.
 disable-model-invocation: true
 ---
 
@@ -18,7 +18,8 @@ disable-model-invocation: true
 
 - **Batch**: the tickets delivered together through one batch branch per repository and one final review.
 - **Integration branch**: where batches land, from the profile or `--into`; it may be the development branch or a long-lived branch for one body of work.
-- **Flag**: a ticket reviewer's unverified suspicion, answered by the implementer and ruled on by the final review.
+- **Risk checks**: the implementer's answers, in its commit, to the questions its ticket's risk tags raise and to three it always answers (inputs, existing paths, reuse). The final review checks each one.
+- **Carry list**: `.deliver/<slug>/carry.md`, what the batch has to act on that no diff shows: follow-ups from a handoff or an earlier batch, and out-of-scope notes from implementers. Every item is resolved, filed or dropped before delivery.
 - **Finding**: a defect the final review verified, with a severity (Blocking, Should-fix, Nit) or marked Follow-up when it lies outside the batch's own code.
 - **Delivered**: merged to the integration branch and running wherever that branch deploys.
 
@@ -26,11 +27,12 @@ disable-model-invocation: true
 
 - **The grilling is the plan.** The ADR and the tickets are the only build input. There is no plan or spec phase; `run` checks each ticket against a bar and fixes it in the tracker before building.
 - **The implementer decides the technical calls.** It records each one under `Decisions:` in its commit, and the final review checks them against the ADR. Only product, scope and ADR questions reach the user.
-- **Cheap review per ticket, strong review per batch.** A Haiku ticket reviewer flags each ticket once. A correctness reviewer and a quality reviewer on Opus read the whole batch, rule on every flag, and hand one fixer one round. A confirm pass runs only after a Blocking finding.
-- **Context is the cost.** Cost scales with context size times calls, so every agent is fresh per ticket or per batch, has an explicit tools list with no MCP servers, and reports in under 300 words; the final reviewers' report is their findings, in under 900. The orchestrator reads reports and script output, never transcripts. The user's settings cap every session at 300k tokens (`autoCompactWindow`).
+- **Self-check per ticket, strong review per batch.** Each implementer answers its ticket's risk checks from the code, including code outside its diff. A correctness reviewer and a quality reviewer on Opus read the whole batch, starting from those answers and the carry list, and hand one fixer one round. A confirm pass runs only after a Blocking finding. ADR 0002 records why the Haiku ticket reviewer went.
+- **Context is the cost.** Cost scales with context size times calls, so every agent is fresh per ticket or per batch, has an explicit tools list with no MCP servers, and reports in under 300 words; the final reviewers' report is their findings, in under 900. The tracker clerk is the one agent with an MCP server: it holds the tracker's tools, so the issues they echo back never reach the orchestrator. The orchestrator reads reports and script output, never transcripts, and copies the final reviewers' findings with `scripts/save-report.py` instead of retyping them. The user's settings cap every session at 300k tokens (`autoCompactWindow`).
 - **One or two tickets at a time.** Each ticket branches from the batch head, so nothing rebases and nothing needs locks or grants.
 - **Everything project-specific lives in the profile.** The skill never names a tracker, a host, a branch or a test runner.
-- **State lives in files.** `.deliver/state.json`, `tickets.md`, the flag files and the findings files let a cold session resume.
+- **State lives in files.** `.deliver/state.json`, `tickets.md`, the carry list, the notes (the user's standing instructions for the run) and the findings files let a cold session resume.
+- **One session owns a batch.** `state.py` refuses writes from any other session until it claims the batch, which it does only after asking the user.
 - **Measure.** `scripts/cost.py` writes one row per batch to `.deliver/costs.md`. The target is 12M weighted tokens per ticket or less (ADR 0001).
 
 ## Skills this one calls

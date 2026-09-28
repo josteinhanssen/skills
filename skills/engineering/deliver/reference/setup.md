@@ -7,11 +7,11 @@ Writes the project profile and installs the role agents. Run once per workspace,
 Look first; ask only what the workspace cannot tell you.
 
 - An existing `docs/agents/delivery-profile.md`: carry every fact over. Drop what the new flow has no use for: spec roots, plan and spec rulings, the volume threshold, grants, lock directories, exclusive resources, the delivery log path, the external review tool, the UI hook.
-- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names and whether the risk labels exist.
+- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names, whether the risk labels exist, and the full names of the tools that move an issue, comment and create one, as this session lists them.
 - Repositories: every git repository in the workspace, its `origin` host, and which CLI is signed in (`az repos`, `gh`).
 - Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds, and which merge types the integration branch's policy allows (a batch PR wants a merge commit; squash-only is recorded as such).
 - Deploy: pipeline definitions, whether a merge deploys by itself or runs are queued by hand, after-deploy steps.
-- Test rungs: `package.json` scripts, solution and project files, validation ladders in CLAUDE.md, durations.
+- Test rungs: `package.json` scripts, solution and project files, validation ladders in CLAUDE.md, durations. Tests that need a real database: how they are marked, the switch that runs them, how many a plain run skips, and every step that creates, migrates and drops such a database.
 - Sandbox: worktree directories, port ranges, database naming, per-worktree caches.
 - Quality: standards documents, and where shared components, helpers and types live.
 - Never: prohibitions in CLAUDE.md or AGENTS.md (databases, environments, secrets).
@@ -24,9 +24,12 @@ One round of numbered questions in the `grilling` format, each with a recommende
 
 Fill `templates/delivery-profile.md` and write it to `docs/agents/delivery-profile.md`. Every field is a fact or a complete command; "none" where it does not apply.
 
+- Every command runs as written in an agent's shell, which is not a login shell. Check each command's program with `command -v` through the Bash tool, and write the full path of any that isn't on that PATH (for example `~/.dotnet/tools/sqlpackage`).
+- A recipe of more than one step, such as creating, migrating and dropping a test database, becomes one script next to the profile. The script stops at its first failed step, prints what it did, and never prints a secret or a connection string. The profile names the script's commands. Agents otherwise re-derive such a recipe each time and retry it step by step.
+
 ## 4. Install the role agents
 
-Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner, plan-reviewer, judge, implementer-escalation, reviewer-spec, reviewer-standards). Copy the five templates from `templates/agents/`, keeping their frontmatter (`model`, `effort`, `tools`). Replace each `{profile extract}` marker with the profile fields it names, and every `scripts/` reference with the absolute path of the installed skill's `scripts/` directory. Add no other project prose; the templates are the contract and the profile is the data.
+Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner, plan-reviewer, judge, implementer-escalation, reviewer-spec, reviewer-standards, ticket-reviewer). Copy the five templates from `templates/agents/`, keeping their frontmatter (`model`, `effort`, `tools`, `disallowedTools`). Replace each `{profile extract}` marker with the profile fields it names, and every `scripts/` reference with the absolute path of the installed skill's `scripts/` directory. Add no other project prose; the templates are the contract and the profile is the data.
 
 Newly installed agents can take a few minutes to register in a running session. Retry the spawn by name before anything else.
 

@@ -10,7 +10,7 @@ Skills live under `skills/<category>/<name>/SKILL.md`, the layout the installer 
 
 | Skill | Purpose |
 |---|---|
-| `engineering/deliver` | Take the ADR and tickets from a grilling session to the integration branch and its dev deploy with sub-agents: Opus builds, Haiku flags, one strong review per batch |
+| `engineering/deliver` | Take the ADR and tickets from a grilling session to the integration branch and its dev deploy with sub-agents: Opus builds and checks its own risks, one strong review per batch |
 
 ## deliver: design
 
@@ -31,16 +31,16 @@ The previous version (tag `deliver-v1`) planned a batch, then wrote a spec per P
 
 The spec planners wrote each change in full, pinned it by hash, measured mutation probes and replayed it, and then the implementer did the same work again. PR review, the part that most looked like a cost worth cutting, was 4%. What made everything expensive was context size times calls. Planners carried 534k tokens of context on every call, and the orchestrator 509k across 526 calls. Weighted tokens here are input 1×, cache read 0.1×, cache write 2×, output 5×.
 
-So the grilling is the plan. The decisions a spec used to make, the implementer now makes and records; review moves from per PR to per batch; and every agent's context stays small. ADR [0001](docs/adr/0001-deliver-builds-from-tickets.md) records the trade: the pre-code gate did find real defects (a measured deadlock, a token-policy hole), and those now have to come from risk-tag tests or the final review.
+So the grilling is the plan. The decisions a spec used to make, the implementer now makes and records; review moves from per PR to per batch; and every agent's context stays small. ADR [0001](docs/adr/0001-deliver-builds-from-tickets.md) records the trade: the pre-code gate did find real defects (a measured deadlock, a token-policy hole), and those now have to come from risk-tag tests or the final review. ADR [0002](docs/adr/0002-implementers-check-their-own-risks.md) replaced the per-ticket Haiku reviewer with risk checks the implementer answers itself.
 
 ### The flow
 
 1. **Budget.** The orchestrator reads plan usage, proposes a weekly cap, and the user agrees once.
-2. **Intake.** Every ticket gets checked against the bar (behavioural acceptance criteria, blocking edges, one repository, risk tags, out of scope, an ADR link, about 400 production lines) and fixed in the tracker. Tickets group into batches of up to 6 tickets or about 2,500 production lines.
-3. **Per ticket.** A fresh implementer builds from the batch head and commits with a `Decisions:` list. A ticket reviewer writes up to 15 flags. The implementer fixes the flags it can confirm and answers the rest. `merge-ticket.sh` merges the ticket into the batch branch.
-4. **Final review.** The integration branch is merged in and the full tests run. A correctness reviewer and a quality reviewer read the whole batch in parallel and rule on every flag. Follow-ups outside the batch's own code become tickets.
-5. **Fix round.** One fixer, one round. The orchestrator reads the delta, and a confirm pass runs only after a Blocking finding.
-6. **Deliver.** One batch PR per repository with a merge commit, CI, the vote, a check that the merged tree is the reviewed tree, the deploy watched to success, tickets done, and a cost row.
+2. **Intake.** Every ticket gets checked against the bar (behavioural acceptance criteria, blocking edges, one repository, risk tags, out of scope, an ADR link, about 400 production lines) and fixed in the tracker. Tickets group into batches of up to 6 tickets or about 2,500 production lines. A carry list starts with what the batch must act on that no diff will show.
+3. **Per ticket.** A fresh implementer builds from the batch head, answers the risk checks for its tags plus inputs, existing paths and reuse, and commits with `Decisions:` and `Risk checks:`. `merge-ticket.sh` merges the ticket into the batch branch and prints its actual size. Its out-of-scope notes go on the carry list.
+4. **Final review.** The integration branch is merged in and the full tests run, database-backed ones included. A correctness reviewer and a quality reviewer read the whole batch in parallel, starting from the risk checks and the carry list. Follow-ups outside the batch's own code become tickets, and every carry item is resolved, filed or dropped.
+5. **Fix round.** One fixer, one round. It reports any ticket Decision a fix replaced, and the PR description and the tickets' done comments carry those. The orchestrator reads the delta, and a confirm pass runs only after a Blocking finding.
+6. **Deliver.** One batch PR per repository with the profile's strategy (merge commit or squash), CI, the vote, a check that the merged tree is the reviewed tree, the deploy watched to success, and a close that runs once: tickets done, worktrees and databases removed, and a cost row.
 
 The session stops for the user only for a product or scope question, anything past the integration branch or touching secrets or shared databases, a finding that would change the ADR, a CI run or deploy that fails after its one fix attempt, and the weekly cap.
 
@@ -48,20 +48,20 @@ The session stops for the user only for a product or scope question, anything pa
 
 | Role | Model | Scope | Tools |
 |---|---|---|---|
-| Orchestrator | the user's session | the whole run | everything, including the tracker |
-| Implementer | Opus 5.5, high | one ticket, resumed once for flags | files, shell, skills |
-| Ticket reviewer | Haiku 4.5 | one ticket's diff, one pass | read, shell, write its flag file |
+| Orchestrator | the user's session | the whole run | everything; reads the tracker |
+| Implementer | Opus 5.5, high | one ticket and its risk checks | files, shell, skills |
 | Correctness reviewer | Opus 5.5, xhigh | the whole batch | read, shell, write in its own scratch worktree; returns its findings |
 | Quality reviewer | Opus 5.5, xhigh | the whole batch, against its own fixed bar | read, shell; returns its findings |
 | Fixer | Opus 5.5, high | the one fix round, or one CI or deploy failure | files, shell, skills |
+| Tracker clerk | Haiku 4.5 | a numbered list of tracker writes | the tracker's tools; no files or shell |
 
-No role gets MCP servers, and none spawns another agent. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
+No role but the tracker clerk gets MCP servers, and none spawns another agent. The clerk exists so that the whole issues a tracker echoes back after each write land in a throwaway Haiku context instead of the orchestrator's. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
 
 ### Cost controls
 
 - `autoCompactWindow: 300000` in the user settings caps every session and agent at 300k tokens of context.
-- Agents are fresh per ticket or per batch and report in under 300 words, except the final reviewers, whose report is their findings (under 900); the orchestrator never reads a transcript.
-- An explicit `tools` list per agent keeps MCP tool definitions out of every call.
+- Agents are fresh per ticket or per batch and report in under 300 words, except the final reviewers, whose report is their findings (under 900); the orchestrator never reads a transcript, and `save-report.py` copies the findings from the reviewers' transcripts so the orchestrator doesn't retype them.
+- An explicit `tools` list per agent keeps MCP tool definitions out of every call. The tracker clerk is the exception: it inherits the session's tools with the local ones disallowed, and runs on Haiku.
 - One or two tickets at a time, each from the batch head: no rebases, grants or locks.
 - `autoContinueAtUsageLimit: true` lets a batch wait out a 5-hour limit; the weekly cap stops it.
 - `scripts/cost.py` appends one row per batch to `.deliver/costs.md`: weighted tokens per ticket, an Opus-equivalent figure that prices Haiku and Sonnet turns at their share of Opus, and the weekly percentage per ticket. The target is 12M weighted per ticket or less over the first three batches.
@@ -96,6 +96,49 @@ What it taught the skill:
 - The final reviewers moved from high to xhigh effort. They are the last check before dev and 17% of the cost; the implementers stay at high until a batch shows a need.
 - Smaller fixes: the intake size bar counts production lines only, `verify-merge.py` recognises .NET `*.Tests` projects, `sweep.py` accepts a branch the host already deleted, and `cost.py` finds the session from the agent ids.
 
+**2. `ate-488-b2` (Memerix backend, 2026-09-25 to 2026-09-28).** ATE-494's partner-order intake, split into six tickets (ATE-521 to ATE-526), went through one batch PR (PR 5919) to dev: 21.88M weighted tokens, 3.65M per ticket, 3.43M Opus-equivalent. Weekly usage per ticket is an estimate, about 0.6%: the end reading was taken after a weekend of other use. ATE-526's implementer alone used 4.19M on a 1,350-line diff.
+
+| Role | Agents | Weighted | Opus-eq | Share (opus-eq) |
+|---|---|---|---|---|
+| Implementer | 6 | 10.74M | 10.74M | 52% |
+| Ticket reviewer (Haiku) | 6 | 1.72M | 0.43M | 2% |
+| Final review and confirm pass | 3 | 3.15M | 3.15M | 15% |
+| Fixer | 1 | 2.06M | 2.06M | 10% |
+| Orchestrator | — | 4.19M | 4.19M | 20% |
+
+What it taught the skill:
+
+- The Haiku ticket reviewer raised one flag in six tickets and twice wrote no flag file. The final review found four defects in diffs it had read, and a Blocking race whose other half was outside every diff. It is dropped (ADR 0002). Implementers answer risk checks, and the correctness reviewer checks the answers.
+- Knowledge from outside the diff had nowhere to go: the handoff's follow-ups and the implementers' out-of-scope notes were carried by hand, and the final review named only part of them. The carry list holds them, and every item is ruled on before delivery.
+- Two tickets built side by side collided in a shared test count. Implementers keep new tests to their own classes and rows, and each brief names the ticket building alongside.
+- The SQL Server tests never ran: the full rung skipped 17 to 19 of them, and a brief said "only if you need SQL Server". The profile now names database-backed tests, a brief assigns a database outright for a concurrency or migration ticket, and the final full run uses a batch database.
+- The batch PR was completed by hand as a squash again, which took the ticket commits and their Decisions off `main`. Memerix now squashes on purpose, and the PR description carries the Decisions or links to them.
+- A second session resumed b2 while the first was still watching its deploy, and closed it. `state.py` now records the owning session and refuses writes from another until it claims the batch, and the close runs only once.
+- Scripts: `sweep.py` run outside a repository exited 0 and now fails; `merge-ticket.sh` prints each ticket's actual size and flags overruns (b3's first tickets came in at 1.6 times their estimates); `sweep.py --worktree` removes a reviewer's worktree; `state.py show` prints the weekly readings by name. `cost.py` takes agent ids as a string, list or map.
+- The orchestrator retyped about 900 words of findings three times, and spent turns on reports the harness re-sent hours later. `save-report.py` copies findings from the transcript, and a re-sent report gets one line. The tracker's echo of each ticket on every state change stayed, at about 2.5k tokens a move.
+- The batch's end reading of weekly usage is now taken at green CI, before the user's merge and the deploy wait.
+
+**3. `ate-488-b3` (Memerix backend, 2026-09-28).** ATE-501's partner webhook push, split into four tickets (ATE-535 to ATE-538), went through one batch PR (PR 5926) to dev: 10.67M weighted tokens, 2.67M per ticket, 2.49M Opus-equivalent. Weekly usage went from 91% to 92%. The final review found 0 Blocking, 9 Should-fix and 5 Nits, and one fixer fixed all 14 in one round. The playbook changes from b2 were written while this batch ran. The scripts were installed mid-run and the playbook after it.
+
+| Role | Agents | Weighted | Opus-eq | Share (opus-eq) |
+|---|---|---|---|---|
+| Implementer | 4 | 3.17M | 3.17M | 32% |
+| Ticket reviewer (Haiku) | 4 | 0.95M | 0.24M | 2% |
+| Final review, both axes | 2 | 1.55M | 1.55M | 16% |
+| Fixer | 1 | 1.89M | 1.89M | 19% |
+| Orchestrator | — | 3.11M | 3.11M | 31% |
+
+What it taught the skill:
+
+- The Haiku reviewer's last batch: 4 flags on 4 tickets, all about documented 401 and 403 answers. It missed a send loop on the auth ticket that never failed, and three duplicated helpers. Given the same five named writers and race questions, it answered neither by name, while the Opus correctness reviewer answered all four with SQL Server measurements. ADR 0002 stands.
+- The fix round replaced three ticket Decisions, and the ticket comments in the tracker, which the squash PR linked to, still described the old design. The fixer now reports `Decisions replaced:`, and the PR description and the done comments carry them.
+- Tracker echoes were again the orchestrator's largest context cost: 83% after intake and one ticket, and two auto-compactions over the run. A Haiku tracker clerk now makes every tracker write.
+- The test-database recipe failed three ways: `sqlpackage` wasn't on the agent's PATH, a failed import left a half-migrated database behind, and every import needed a migration marked as applied by hand. Setup now turns a multi-step recipe into one script that stops at its first failure, and checks every profile command in the agent's shell.
+- `sweep.py --host azure-devops` without `--org` printed "PR ?", kept everything and exited 0. It now needs the host arguments, which the profile gives on a Sweep line, and it stops with exit 1 on an answer it can't read.
+- b2's state held a made-up phase (`deploying`) and a confirm reviewer under the wrong key. `state.py` now refuses a phase outside the table and a key that looks like a misspelling.
+- Estimates taken from per-file counts of existing code ran 1.0 to 1.6 times low; intake multiplies them by 1.4.
+- Smaller: the orchestrator's notes held a copy of a profile line that changed mid-run, so notes now point at profile lines instead. The weekly readings are recorded after `init`, not into the previous batch. A Decision relayed between two running tickets goes on the carry list; b3's relayed Decision became a quality finding.
+
 ### History
 
 `deliver-v1` (tag) is the plan, spec, run and close design with its seven trials, from the wave-N baseline through hygiene-2, and the lessons each one fed back into the skill. Read it with `git show deliver-v1:README.md`. The ATE-488 figures above are that design's last measurement.
@@ -109,6 +152,6 @@ skills/engineering/deliver/
   SKILL.md                 commands, words, principles
   agents/openai.yaml       interface shim for the installer
   reference/               run, status and setup playbooks
-  templates/               the profile and the five role agents
-  scripts/                 state file, ticket merge, merge verification, sweep, cost, quiet runner
+  templates/               the profile, the four role agents and the tracker clerk
+  scripts/                 state file, ticket merge, merge verification, sweep, cost, report saver, quiet runner
 ```

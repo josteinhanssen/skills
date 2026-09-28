@@ -5,8 +5,9 @@ Usage:
   cost.py --batch <slug> [--session-dir <dir>] [--session-jsonl <file>] [--state .deliver/state.json]
           [--markdown] [--summary-row] [--summary-header]
 
-Rows: per ticket "implement" (tickets[id].agent) and "ticket review" (tickets[id].reviewer);
-batch "final review" (batch.reviewers plus batch.confirm); "fix" (batch.fixer); each id key may hold one id, a list or a map of role to id;
+Rows: per ticket "implement" (tickets[id].agent) and, for batches before ADR 0002, "ticket review" (tickets[id].reviewer);
+batch "final review" (batch.reviewers plus batch.confirm); "fix" (batch.fixer); "tracker" (batch.clerks); each id key may hold
+one id, a list or a map of role to id;
 "orchestrate" (the orchestrator's own transcript, sliced to [batch.startedAt, batch.closedAt or
 now]); "unassigned" (any other sub-agent transcript in the session directory, one row each, also
 sliced to that window so an earlier or later batch in the same session does not pollute it).
@@ -143,6 +144,7 @@ def build_mapping(state: dict) -> dict[str, str]:
     claim(batch.get("reviewers"), "(batch) final review")
     claim(batch.get("confirm"), "(batch) final review")
     claim(batch.get("fixer"), "(batch) fix")
+    claim(batch.get("clerks"), "(batch) tracker")
     return mapping
 
 
@@ -151,7 +153,7 @@ def row_order(state: dict, extra_rows: list[str]) -> list[str]:
     for tid in state.get("tickets", {}):
         order.append(f"{tid} implement")
         order.append(f"{tid} ticket review")
-    order += ["(batch) final review", "(batch) fix", "(batch) orchestrate"]
+    order += ["(batch) final review", "(batch) fix", "(batch) tracker", "(batch) orchestrate"]
     order += sorted(extra_rows)
     return order
 
