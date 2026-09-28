@@ -2,7 +2,7 @@
 """Remove merged, clean worktrees and their local and remote branches; report the rest.
 
 Usage:
-  sweep.py [--path <repo>] --host azure-devops --project "<project>" --repo "<repo>" [--org <url>] [--ticket <branch>] [--dry-run]
+  sweep.py [--path <repo>] --host azure-devops --org <url> --project "<project>" --repo "<repo>" [--ticket <branch>] [--dry-run]
   sweep.py [--path <repo>] --host github [--repo <owner/name>] [--ticket <branch>] [--dry-run]
   sweep.py [--path <repo>] --merged-into <ref> --ticket <branch> [--dry-run]
   sweep.py [--path <repo>] --worktree <path> [--dry-run]
@@ -16,7 +16,9 @@ Options:
   --keep-path <path>      never remove this worktree (repeatable; active agents, scratch)
   --pattern <regex>       branches considered ticket branches (default: feature/|batch-|batch/|msite-|ticket/)
 
-Host modes (--host; PR-completed, for batch branches), rules in order for every non-primary worktree:
+Host modes (--host; PR-completed, for batch branches). Azure DevOps needs --org, --project and --repo.
+When the host CLI gives no readable answer for a branch, the script stops there with exit 1 and
+the CLI's message. Rules in order for every non-primary worktree:
   keep if its path is protected, it is detached, its PR is not completed, its tree is dirty,
   or its head differs from the PR's merged source commit;
   otherwise `git worktree remove` (never --force), `git branch -D`, and delete the remote branch.
@@ -51,10 +53,21 @@ def sh(cmd: list[str] | str, cwd: str | None = None) -> tuple[int, str]:
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
+class HostError(Exception):
+    """The host CLI gave no readable answer (not signed in, wrong organisation, network)."""
+
+
 class Host:
     def pr_state(self, branch: str) -> tuple[str, str | None, str]:
-        """(status, pr id, merged source commit)"""
+        """(status, pr id, merged source commit); raises HostError when the host can't be read"""
         raise NotImplementedError
+
+
+def parse_prs(out: str, cmd: list[str]) -> list[dict]:
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        raise HostError(f"`{' '.join(cmd[:3])} ...` answered: {out[:300] or '(nothing)'}") from None
 
 
 class AzureDevOps(Host):
@@ -62,14 +75,12 @@ class AzureDevOps(Host):
         self.org, self.project, self.repo = org, project, repo
 
     def pr_state(self, branch: str):
-        rc, out = sh([
+        cmd = [
             "az", "repos", "pr", "list", "--organization", self.org, "--project", self.project,
             "--repository", self.repo, "--source-branch", branch, "--status", "all", "-o", "json",
-        ])
-        try:
-            prs = json.loads(out)
-        except json.JSONDecodeError:
-            return ("?", None, "")
+        ]
+        rc, out = sh(cmd)
+        prs = parse_prs(out, cmd)
         if not prs:
             return ("no-pr", None, "")
         prs.sort(key=lambda p: p["pullRequestId"])
@@ -86,10 +97,7 @@ class GitHub(Host):
         if self.repo:
             cmd += ["--repo", self.repo]
         rc, out = sh(cmd)
-        try:
-            prs = json.loads(out)
-        except json.JSONDecodeError:
-            return ("?", None, "")
+        prs = parse_prs(out, cmd)
         if not prs:
             return ("no-pr", None, "")
         prs.sort(key=lambda p: p["number"])
@@ -211,6 +219,13 @@ def sweep_merged_into(args: argparse.Namespace, repo: str, entries: list[dict], 
         print("  kept:", k)
 
 
+def pr_state_or_exit(host: Host, branch: str) -> tuple[str, str | None, str]:
+    try:
+        return host.pr_state(branch)
+    except HostError as err:
+        sys.exit(f"could not read the PR for {branch} from the host: {err}\nStopped there; check the host arguments and the CLI's sign-in")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--path", default=os.getcwd(), help="the repository to sweep (default: the current directory)")
@@ -230,6 +245,8 @@ def main() -> None:
         ap.error("--host is required unless --merged-into or --worktree is given")
     if args.merged_into and not args.ticket:
         ap.error("--merged-into requires --ticket")
+    if args.host == "azure-devops" and not (args.org and args.project and args.repo):
+        ap.error("--host azure-devops needs --org, --project and --repo; the profile's Sweep line has them")
 
     rc, top = sh(["git", "rev-parse", "--show-toplevel"], cwd=args.path)
     if rc != 0:
@@ -278,7 +295,7 @@ def main() -> None:
         elif branch in keep_branches:
             reason = "protected branch"
         else:
-            status, pr, merged = host.pr_state(branch)
+            status, pr, merged = pr_state_or_exit(host, branch)
             rc, dirty = sh("git status --porcelain | wc -l", cwd=path)
             rc, head = sh(["git", "rev-parse", "HEAD"], cwd=path)
             rc, remote = sh(["git", "rev-parse", "-q", "--verify", f"origin/{branch}"], cwd=path)
@@ -323,7 +340,7 @@ def main() -> None:
         for branch in out.split():
             if not pattern.match(branch) or branch in live or branch in keep_branches:
                 continue
-            status, pr, merged = host.pr_state(branch)
+            status, pr, merged = pr_state_or_exit(host, branch)
             rc, remote_head = sh(["git", "rev-parse", f"origin/{branch}"], cwd=repo)
             if status == "completed" and merged and remote_head == merged:
                 rc, out2 = run(["git", "push", "origin", "--delete", branch], cwd=repo)

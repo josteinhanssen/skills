@@ -8,15 +8,16 @@ Amends [0001](0001-deliver-builds-from-tickets.md), which had a Haiku ticket rev
 
 ## Why
 
-After trial 1 the ticket reviewer's checks were sharpened, and trial 2 was to decide whether it stayed. Over batches `ate-488-b1`, `b2` and the first four tickets of `b3`, it read 13 tickets:
+After trial 1 the ticket reviewer's checks were sharpened, and trial 2 was to decide whether it stayed. Over batches `ate-488-b1`, `b2` and `b3`, it read 13 tickets:
 
 - On two tickets its flags led to fixes: ATE-522 (a duplicate helper) and ATE-537 (two OpenAPI annotations).
 - On b2 it wrote no flag file at all for two tickets, and the orchestrator had to recover them.
 - In b2 the final review found four defects in diffs the ticket reviewers had read without flagging them: a regex duplicating `OrgNumbers.IsValid` and a money field with no upper bound (ATE-522), and a removal that went around `GravestoneOrderService` and bare constants (ATE-526).
 - The one Blocking defect in b2, an accept or reject racing intake, needed code outside the diff (`OrderFactService`), which a diff-only reviewer never reads.
-- In b3 it returned no flags on the auth and concurrency tickets. Their briefs asked it specific questions, which its reports didn't answer by name.
+- In b3 it raised 4 flags on 4 tickets, all about documented 401 and 403 answers. It returned none on the auth and concurrency tickets, whose briefs asked it specific questions that its reports didn't answer by name. The final review found a send loop on the auth ticket that never failed, and three duplicated helpers.
+- Given the same five named writers and race questions, the Opus correctness reviewer answered all four with SQL Server measurements.
 
-It cost about 2% of b2's Opus-equivalent tokens and 4% of b3's so far. On top of that, each ticket took two or three extra orchestrator calls to spawn it, recover its file and resume the implementer.
+It cost about 2% of b2's Opus-equivalent tokens and 2.4% of b3's (0.95M weighted tokens, 9% of b3's weighted total). On top of that, each ticket took two or three extra orchestrator calls to spawn it, recover its file and resume the implementer.
 
 The misses have one thing in common: each was a question about the code around the change. Who else writes these rows? Does this field fit its column? Is there a service that already removes this? The implementer has that context already, and the correctness reviewer can check a written answer faster than it can find the question.
 

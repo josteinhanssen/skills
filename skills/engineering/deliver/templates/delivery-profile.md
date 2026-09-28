@@ -13,6 +13,7 @@ Read by `/deliver`; written by `/deliver setup`. Every field is a fact or a copy
 - Team: {value}
 - Ticket id pattern: {for example ATE-123}
 - States: in progress {name}; in review {name}; done {name}; backlog {name}
+- Write tools (the tracker clerk's): {full tool names for moving, commenting on and creating an issue, as the session lists them | none for a files tracker}
 - Risk labels: {risk:auth, risk:concurrency, risk:migration, risk:data-loss}; created by `/deliver` if missing: {yes | no}
 
 ## Repositories
@@ -38,6 +39,7 @@ One block per repository, in delivery order (the first one's batch PR merges fir
   - Watch: `{command with {run-id} or by commit}`; succeeded when {field and value}
   - After deploy: {steps, e.g. a reseed pipeline, with commands | none}
 - PR description limit: {characters}
+- Sweep: `scripts/sweep.py --path {path} {host arguments, every one the host needs: --host azure-devops --org {url} --project {project} --repo {repo}, or --host github --repo {owner/name}}`
 
 ## Test rungs
 
@@ -57,7 +59,8 @@ One block per repository, in delivery order (the first one's batch PR merges fir
 
 - Worktree path pattern: `{repo}/.worktrees/{ticket}`; orchestrator scratch: `{repo}/.worktrees/batch-{slug}`; fixer: `{repo}/.worktrees/fix-{slug}`
 - Port ranges: {per purpose}
-- Database naming: {pattern per ticket, fixer, correctness reviewer and batch; how to create, migrate and drop one | none}
+- Database naming: {pattern per ticket, fixer, correctness reviewer and batch | none}
+- Test database: create and migrate `{script command with {database} and {worktree}}`; run a command against it `{script command with {database} and {command}}`; drop `{script command with {database}}`. One script that stops at its first failed step and never prints a connection string {| none}
 - Cache directories that must be per worktree: {list}
 - Dependency install: `{command}`; symlink rule: {text}
 - Silence threshold before a liveness check: {minutes}

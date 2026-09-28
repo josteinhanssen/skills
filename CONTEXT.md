@@ -69,3 +69,7 @@ _Avoid_: standards reviewer, style reviewer
 **Fixer**:
 The agent that applies the final review's findings on the batch branch in the one fix round.
 _Avoid_: implementer
+
+**Tracker clerk**:
+The Haiku agent that makes the tracker writes the orchestrator hands it as a list, so the whole issues a tracker echoes back stay out of the orchestrator's context.
+_Avoid_: tracker agent, Linear agent
