@@ -7,7 +7,7 @@ Writes the project profile and installs the role agents. Run once per workspace,
 Look first; ask only what the workspace cannot tell you.
 
 - An existing `docs/agents/delivery-profile.md`: carry every fact over. Drop what the new flow has no use for: spec roots, plan and spec rulings, the volume threshold, grants, lock directories, exclusive resources, the delivery log path, the external review tool, the UI hook.
-- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names, whether the risk labels exist, and the full names of the tools that move an issue, comment and create one, as this session lists them.
+- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names, whether the risk labels exist, and the tools that move an issue, comment and create one: the server that offers them and each tool's own name (`save_issue`). A claude.ai connector's full tool names carry an id that differs between Claude accounts, so record the full names as the ones last seen, not the only ones.
 - Repositories: every git repository in the workspace, its `origin` host, and which CLI is signed in (`az repos`, `gh`).
 - Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds, and which merge types the integration branch's policy allows (a batch PR wants a merge commit; squash-only is recorded as such).
 - Deploy: pipeline definitions, whether a merge deploys by itself or runs are queued by hand, after-deploy steps.

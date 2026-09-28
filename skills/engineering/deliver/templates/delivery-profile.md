@@ -13,7 +13,7 @@ Read by `/deliver`; written by `/deliver setup`. Every field is a fact or a copy
 - Team: {value}
 - Ticket id pattern: {for example ATE-123}
 - States: in progress {name}; in review {name}; done {name}; backlog {name}
-- Write tools (the tracker clerk's): {full tool names for moving, commenting on and creating an issue, as the session lists them | none for a files tracker}
+- Write tools (the tracker clerk's): {the server and each tool's own name for moving, commenting on and creating an issue, then the full names last seen (`mcp__<id>__<tool>`; a claude.ai connector's id differs between accounts, and the run finds the current one) | none for a files tracker}
 - Risk labels: {risk:auth, risk:concurrency, risk:migration, risk:data-loss}; created by `/deliver` if missing: {yes | no}
 
 ## Repositories
