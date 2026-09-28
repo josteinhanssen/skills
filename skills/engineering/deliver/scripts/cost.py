@@ -6,7 +6,7 @@ Usage:
           [--markdown] [--summary-row] [--summary-header]
 
 Rows: per ticket "implement" (tickets[id].agent) and "ticket review" (tickets[id].reviewer);
-batch "final review" (the values of batch.reviewers plus batch.confirm); "fix" (batch.fixer);
+batch "final review" (batch.reviewers plus batch.confirm); "fix" (batch.fixer); each id key may hold one id, a list or a map of role to id;
 "orchestrate" (the orchestrator's own transcript, sliced to [batch.startedAt, batch.closedAt or
 now]); "unassigned" (any other sub-agent transcript in the session directory, one row each, also
 sliced to that window so an earlier or later batch in the same session does not pollute it).
@@ -119,22 +119,29 @@ def load_state(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def agent_ids(value) -> list[str]:
+    """An id key as orchestrators write it: one id, a list of ids, or a map of role to id."""
+    if not value:
+        return []
+    if isinstance(value, dict):
+        value = list(value.values())
+    return [value] if isinstance(value, str) else [v for v in value if isinstance(v, str)]
+
+
 def build_mapping(state: dict) -> dict[str, str]:
     """agent id -> row label, first assignment wins."""
     mapping: dict[str, str] = {}
 
-    def claim(agent_id, row) -> None:
-        if agent_id and agent_id not in mapping:
-            mapping[agent_id] = row
+    def claim(value, row) -> None:
+        for agent_id in agent_ids(value):
+            mapping.setdefault(agent_id, row)
 
     for tid, entry in state.get("tickets", {}).items():
         claim(entry.get("agent"), f"{tid} implement")
         claim(entry.get("reviewer"), f"{tid} ticket review")
     batch = state.get("batch", {})
-    for agent_id in (batch.get("reviewers") or {}).values():
-        claim(agent_id, "(batch) final review")
-    for agent_id in batch.get("confirm") or []:
-        claim(agent_id, "(batch) final review")
+    claim(batch.get("reviewers"), "(batch) final review")
+    claim(batch.get("confirm"), "(batch) final review")
     claim(batch.get("fixer"), "(batch) fix")
     return mapping
 
