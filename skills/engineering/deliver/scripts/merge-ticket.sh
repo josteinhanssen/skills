@@ -2,7 +2,7 @@
 # Merge a ticket branch into the batch branch, verify, and push.
 #
 # Usage: merge-ticket.sh --scratch <worktree> --ticket-branch <branch> --ticket <id> --title <title>
-#                         [--check "<command>"]... [--remote origin]
+#                         [--check "<command>"]... [--remote origin] [--estimate <production lines>]
 #
 # Runs inside <worktree>, which must already be checked out on the batch branch. Records the
 # batch head H before merging. If H is already an ancestor of the ticket branch (merge-base of
@@ -16,17 +16,23 @@
 #   3. Any failure in step 2: `git reset --hard H`, exit 11, and the failing check is named.
 #   4. Success: push HEAD to the batch branch on --remote (default origin) and print one line:
 #      merged <id> <new head sha> (fast path|checks ran)
+#      then the ticket's actual size, from verify-merge.py --sizes over H..HEAD:
+#      size <id>: production <n> test <n> doc <n> generated <n>
+#      With --estimate, the size line ends in "estimate <n>", and in "OVER 1.5x ESTIMATE" when the
+#      production lines exceed one and a half times it.
 set -u
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 VERIFY_HEAD="$SCRIPT_DIR/verify-head.sh"
 RUN_QUIET="$SCRIPT_DIR/run-quiet.sh"
+VERIFY_MERGE="$SCRIPT_DIR/verify-merge.py"
 
 WORKTREE=""
 TICKET_BRANCH=""
 TICKET=""
 TITLE=""
 REMOTE="origin"
+ESTIMATE=""
 CHECKS=()
 
 while [ $# -gt 0 ]; do
@@ -37,6 +43,7 @@ while [ $# -gt 0 ]; do
     --title) TITLE="$2"; shift 2;;
     --check) CHECKS+=("$2"); shift 2;;
     --remote) REMOTE="$2"; shift 2;;
+    --estimate) ESTIMATE="$2"; shift 2;;
     *) echo "unknown option $1" >&2; exit 99;;
   esac
 done
@@ -47,6 +54,7 @@ if [ -z "$TICKET" ]; then echo "--ticket is required" >&2; exit 99; fi
 if [ -z "$TITLE" ]; then echo "--title is required" >&2; exit 99; fi
 if [ ! -x "$VERIFY_HEAD" ]; then echo "$VERIFY_HEAD not found or not executable" >&2; exit 99; fi
 if [ ! -x "$RUN_QUIET" ]; then echo "$RUN_QUIET not found or not executable" >&2; exit 99; fi
+case "$ESTIMATE" in ''|*[!0-9]*) [ -n "$ESTIMATE" ] && { echo "--estimate takes a whole number of lines" >&2; exit 99; };; esac
 
 cd "$WORKTREE" || { echo "cannot cd to $WORKTREE" >&2; exit 98; }
 
@@ -96,3 +104,14 @@ fi
 MODE="fast path"
 [ "$FAST" = "0" ] && MODE="checks ran"
 echo "merged $TICKET $NEW_HEAD ($MODE)"
+
+SIZES=$(python3 "$VERIFY_MERGE" --repo . --delta "$H" HEAD --sizes 2>/dev/null) || SIZES="unknown"
+LINE="size $TICKET: $SIZES"
+if [ -n "$ESTIMATE" ]; then
+  LINE="$LINE, estimate $ESTIMATE"
+  PROD=$(echo "$SIZES" | awk '{for (i = 1; i < NF; i++) if ($i == "production") print $(i + 1)}')
+  if [ -n "$PROD" ] && [ $((PROD * 2)) -gt $((ESTIMATE * 3)) ]; then
+    LINE="$LINE, OVER 1.5x ESTIMATE"
+  fi
+fi
+echo "$LINE"

@@ -4,6 +4,7 @@
 Usage (run from the workspace root the profile names):
   state.py init --slug <slug> --adr <path> [--session-dir <dir>] [--session-jsonl <file>]
   state.py batch set key=value [key=value ...]
+  state.py batch claim [--from <phase>] [--to <phase>]
   state.py repo <name> set key=value [key=value ...]
   state.py ticket <id> set key=value [key=value ...]
   state.py show
@@ -11,6 +12,13 @@ Usage (run from the workspace root the profile names):
 Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null), so
 `blockedBy=["A-1"]` and `reviewers={"correctness":"x"}` work. `init` stores the ADR path as an
 absolute path, since agents working in worktrees read it.
+
+One session owns a batch. `init` records the session's $CLAUDE_CODE_SESSION_ID as `batch.owner`,
+and every later write from another Claude Code session is refused until that session runs
+`batch claim`, which the playbook has it do only after asking the user. `batch claim --from <p>
+--to <p>` also moves the phase, and only when it is still <p>, so a step that must run once (the
+close) runs in one session. A state file without an owner, or a shell outside Claude Code, is not
+checked. Every write holds a lock on .deliver/state.lock and replaces the file in one rename.
 
 Layout: {"batch": {...}, "repos": {name: {...}}, "tickets": {id: {...}}}. `init` sets
 `batch.startedAt`; `batch set phase=delivered` also sets `batch.closedAt`. `init` moves an
@@ -22,16 +30,22 @@ read only those.
 from __future__ import annotations
 
 import argparse
+import difflib
+import fcntl
 import json
+import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 STATE = Path(".deliver/state.json")
+LOCK = Path(".deliver/state.lock")
 ARCHIVE = Path(".deliver/archive")
+SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
 
 KNOWN_BATCH_KEYS = {
-    "slug", "adr", "phase", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
+    "slug", "adr", "phase", "owner", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
     "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "reviewers", "fixer", "confirm", "followUps",
 }
 KNOWN_REPO_KEYS = {
@@ -40,7 +54,13 @@ KNOWN_REPO_KEYS = {
 }
 KNOWN_TICKET_KEYS = {
     "repo", "phase", "blockedBy", "branch", "worktree", "agent", "reviewer", "head",
-    "flags", "weeklyAtEnd", "respawns",
+    "flags", "weeklyAtEnd", "respawns", "prodLines",
+}
+
+# Keys an orchestrator has written where it meant a known one.
+KNOWN_MISTAKES = {
+    "confirmReviewer": "confirm (a list of agent ids)",
+    "confirmReviewers": "confirm (a list of agent ids)",
 }
 
 
@@ -70,6 +90,24 @@ def load() -> dict:
     return state
 
 
+@contextmanager
+def locked():
+    """Serialise read-modify-write across sessions; the lock is released when the process exits."""
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOCK, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+def check_owner(state: dict) -> None:
+    owner = state["batch"].get("owner")
+    if owner and SESSION and owner != SESSION:
+        sys.exit(
+            f"batch {state['batch'].get('slug')} is owned by session {owner}, not this one ({SESSION}). "
+            "Another session may still be running it: ask the user, then `state.py batch claim` to take it over"
+        )
+
+
 def archive(state: dict) -> Path:
     slug = state.get("batch", {}).get("slug") or "unnamed"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -82,7 +120,9 @@ def archive(state: dict) -> Path:
 def save(state: dict) -> None:
     state["updatedAt"] = now()
     STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp = STATE.with_name(f"{STATE.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, STATE)
 
 
 def parse_value(raw: str):
@@ -98,11 +138,18 @@ def apply_sets(target: dict, pairs: list[str], known: set[str]) -> None:
             sys.exit(f"expected key=value, got {pair!r}")
         key, raw = pair.split("=", 1)
         if key not in known:
-            print(f"warning: {key} is not a key cost.py or status reads (see reference/run.md, State keys)", file=sys.stderr)
+            close = KNOWN_MISTAKES.get(key) or next(iter(difflib.get_close_matches(key, sorted(known), n=1)), None)
+            hint = f"; did you mean {close}?" if close else ""
+            print(f"warning: {key} is not a key cost.py or status reads (see reference/run.md, State keys){hint}", file=sys.stderr)
         target[key] = parse_value(raw)
 
 
 def cmd_init(args: argparse.Namespace) -> None:
+    with locked():
+        init(args)
+
+
+def init(args: argparse.Namespace) -> None:
     if STATE.exists():
         existing = read()
         if is_open(existing):
@@ -117,6 +164,7 @@ def cmd_init(args: argparse.Namespace) -> None:
             "slug": args.slug,
             "adr": str(Path(args.adr).resolve()),
             "phase": None,
+            "owner": SESSION,
             "startedAt": now(),
             "closedAt": None,
             "sessionDir": args.session_dir,
@@ -130,27 +178,51 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 
 def cmd_batch(args: argparse.Namespace) -> None:
-    state = load()
-    apply_sets(state["batch"], args.pairs, KNOWN_BATCH_KEYS)
-    if state["batch"].get("phase") == "delivered" and not state["batch"].get("closedAt"):
-        state["batch"]["closedAt"] = now()
-    save(state)
+    with locked():
+        state = load()
+        check_owner(state)
+        apply_sets(state["batch"], args.pairs, KNOWN_BATCH_KEYS)
+        if state["batch"].get("phase") == "delivered" and not state["batch"].get("closedAt"):
+            state["batch"]["closedAt"] = now()
+        save(state)
     print(json.dumps(state["batch"], indent=2, ensure_ascii=False))
 
 
+def cmd_claim(args: argparse.Namespace) -> None:
+    with locked():
+        state = load()
+        batch = state["batch"]
+        if args.from_phase and batch.get("phase") != args.from_phase:
+            sys.exit(
+                f"batch {batch.get('slug')} is in phase {batch.get('phase')}, not {args.from_phase}; "
+                "another session has moved it on. Leave it to that session"
+            )
+        previous = batch.get("owner")
+        batch["owner"] = SESSION
+        if args.to_phase:
+            batch["phase"] = args.to_phase
+        save(state)
+    taken = f", taken over from {previous}" if previous and previous != SESSION else ""
+    print(f"batch {batch.get('slug')} owned by {SESSION}{taken}; phase {batch.get('phase')}")
+
+
 def cmd_repo(args: argparse.Namespace) -> None:
-    state = load()
-    entry = state["repos"].setdefault(args.name, {})
-    apply_sets(entry, args.pairs, KNOWN_REPO_KEYS)
-    save(state)
+    with locked():
+        state = load()
+        check_owner(state)
+        entry = state["repos"].setdefault(args.name, {})
+        apply_sets(entry, args.pairs, KNOWN_REPO_KEYS)
+        save(state)
     print(json.dumps({args.name: entry}, indent=2, ensure_ascii=False))
 
 
 def cmd_ticket(args: argparse.Namespace) -> None:
-    state = load()
-    entry = state["tickets"].setdefault(args.id, {})
-    apply_sets(entry, args.pairs, KNOWN_TICKET_KEYS)
-    save(state)
+    with locked():
+        state = load()
+        check_owner(state)
+        entry = state["tickets"].setdefault(args.id, {})
+        apply_sets(entry, args.pairs, KNOWN_TICKET_KEYS)
+        save(state)
     print(json.dumps({args.id: entry}, indent=2, ensure_ascii=False))
 
 
@@ -168,11 +240,18 @@ def cmd_show(_: argparse.Namespace) -> None:
     batch = state["batch"]
     if not is_open(state):
         print(f"no open batch: the last one, {batch.get('slug')}, is delivered; `state.py init` archives it")
+    def pct(key: str) -> str:
+        value = batch.get(key)
+        return "-" if value is None else str(value)
+
+    owner = batch.get("owner")
+    whose = "" if not owner else " (this session)" if owner == SESSION else " (another session)" if SESSION else ""
     print(
         f"batch {batch.get('slug')}  phase {batch.get('phase')}  adr {batch.get('adr')}  "
-        f"weekly {batch.get('weeklyAtStart')}->{batch.get('weeklyCap')}  "
+        f"weekly start {pct('weeklyAtStart')}, cap {pct('weeklyCap')}, end {pct('weeklyAtEnd')}  "
         f"started {batch.get('startedAt')}  closed {batch.get('closedAt') or ''}"
     )
+    print(f"  owner {owner or 'not recorded'}{whose}")
     for name, r in state["repos"].items():
         print(
             f"  repo {name:<14} into {r.get('into')}  batchBranch {r.get('batchBranch')}  "
@@ -205,6 +284,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch_set = batch_sub.add_parser("set")
     p_batch_set.add_argument("pairs", nargs="*")
     p_batch_set.set_defaults(func=cmd_batch)
+    p_batch_claim = batch_sub.add_parser("claim")
+    p_batch_claim.add_argument("--from", dest="from_phase")
+    p_batch_claim.add_argument("--to", dest="to_phase")
+    p_batch_claim.set_defaults(func=cmd_claim)
 
     p_repo = sub.add_parser("repo")
     p_repo.add_argument("name")

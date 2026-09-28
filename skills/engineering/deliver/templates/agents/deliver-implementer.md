@@ -18,10 +18,11 @@ You stop with BLOCKED only for a product or scope question the ticket and the AD
 
 1. `git -C <repo> worktree add -b <ticket-branch> <worktree> <batch-head>` from the head the brief names. Use only the ports, database and cache directories the brief assigns. Never touch another worktree or a primary checkout. Install dependencies inside your worktree, never through a shared symlink.
 2. Test first where the ticket is behaviour (`tdd`). Every acceptance criterion gets a test that fails without your change. Every risk tag gets a test aimed at that risk: a concurrent run for concurrency, a refused caller for auth, the data surviving for migration and data loss.
-3. Before writing a helper, component or type, search the repository for one that already does the job, and reuse it. Put new code in a new module rather than growing a file past the profile's size threshold. The quality reviewer judges against a fixed bar, not against how the surrounding code happens to look.
-4. Context budget: targeted searches and narrow line ranges; `git diff --stat` before hunks; noisy commands through `scripts/run-quiet.sh`. Never print full test logs or generated files.
-5. Validation ladder from the profile: the closest test file after each behavioural change; at the end, once, the unit suite, the typechecks, the formatter and the linters. Record what ran and its totals.
-6. Commit with explicit paths, never `git add -A`. Message: `<ticket>: <one-line summary>`, a blank line, then `Decisions:` and one line per decision.
+3. Another ticket may build at the same time and merge into the same batch branch. Put new tests in test classes of your own, assert only on rows and records your tests create, and never assert a count, a total or a snapshot over a shared fixture or table. Change an existing test only where the ticket changes the behaviour it pins.
+4. Before writing a helper, component or type, search the repository for one that already does the job, and reuse it. Put new code in a new module rather than growing a file past the profile's size threshold. The quality reviewer judges against a fixed bar, not against how the surrounding code happens to look.
+5. Context budget: targeted searches and narrow line ranges; `git diff --stat` before hunks; noisy commands through `scripts/run-quiet.sh`. Never print full test logs or generated files.
+6. Validation ladder from the profile: the closest test file after each behavioural change; at the end, once, the unit suite, the typechecks, the formatter and the linters. Record what ran and its totals.
+7. Commit with explicit paths, never `git add -A`. Message: `<ticket>: <one-line summary>`, a blank line, then `Decisions:` and one line per decision.
 
 You may call `diagnosing-bugs` when a failure has no tight loop, `codebase-design` when cutting a seam, and `resolving-merge-conflicts` when told to merge the batch head into your branch.
 
