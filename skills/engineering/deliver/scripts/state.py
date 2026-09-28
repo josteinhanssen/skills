@@ -53,8 +53,8 @@ KNOWN_REPO_KEYS = {
     "mergedHead", "deployRuns",
 }
 KNOWN_TICKET_KEYS = {
-    "repo", "phase", "blockedBy", "branch", "worktree", "agent", "reviewer", "head",
-    "flags", "weeklyAtEnd", "respawns", "prodLines",
+    "repo", "phase", "blockedBy", "estimate", "branch", "worktree", "agent", "head",
+    "prodLines", "weeklyAtEnd", "respawns",
 }
 
 # Keys an orchestrator has written where it meant a known one.
@@ -259,13 +259,12 @@ def cmd_show(_: argparse.Namespace) -> None:
             f"pr {r.get('pr')}"
         )
     print()
-    header = f"{'ticket':<12} {'repo':<12} {'phase':<10} {'flags':<8} head"
+    header = f"{'ticket':<12} {'repo':<12} {'phase':<10} {'lines/est':<10} head"
     print(header)
     print("-" * len(header))
     for tid, t in state["tickets"].items():
-        flags = t.get("flags")
-        flags_str = str(len(flags)) if isinstance(flags, list) else ("" if flags is None else str(flags))
-        print(f"{tid:<12} {str(t.get('repo')):<12} {str(t.get('phase')):<10} {flags_str:<8} {str(t.get('head') or '')[:8]}")
+        lines = f"{t.get('prodLines', '-')}/{t.get('estimate', '-')}"
+        print(f"{tid:<12} {str(t.get('repo')):<12} {str(t.get('phase')):<10} {lines:<10} {str(t.get('head') or '')[:8]}")
 
 
 def build_parser() -> argparse.ArgumentParser:

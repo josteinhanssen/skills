@@ -9,8 +9,16 @@ A Linear issue that is the whole build input for one implementer: one repository
 _Avoid_: spec, slice, work item
 
 **Risk tag**:
-A label on a ticket (auth, concurrency, migration, data loss) that obliges the implementer to write a test for that risk and the final review to read that area in full.
+A label on a ticket (auth, concurrency, migration, data loss) that obliges the implementer to write a test for that risk and answer its risk check, and the final review to read that area in full.
 _Avoid_: risk flag, sensitive area
+
+**Risk checks**:
+The implementer's answers, in its commit message, to the questions its ticket's risk tags raise and to the three it always answers (inputs, existing paths, reuse); the correctness reviewer checks each one against the code.
+_Avoid_: self-review, checklist
+
+**Carry list**:
+The batch's list of what it has to act on that no diff shows: follow-ups from a handoff, the grilling or an earlier batch, and out-of-scope notes from implementers. Each item names a ticket or `outside`, and is resolved, filed or dropped before delivery.
+_Avoid_: backlog, notes, TODO list
 
 **Batch**:
 The tickets delivered together through one batch branch and one final review.
@@ -32,14 +40,6 @@ _Avoid_: intermediate branch, feature branch
 
 ## Review
 
-**Flag**:
-A ticket reviewer's suspicion, unverified, written to the batch's flag log with the implementer's one-line answer.
-_Avoid_: finding, issue, comment
-
-**Flag log**:
-The batch's flag files, one per ticket, holding each flag and the implementer's answer; the final review reads all of them.
-_Avoid_: review notes
-
 **Final review**:
 The review of a whole batch on its batch branch by the correctness reviewer and the quality reviewer, followed by at most one fix round.
 _Avoid_: gate, PR review
@@ -51,16 +51,12 @@ _Avoid_: flag, issue
 ## Roles
 
 **Orchestrator**:
-The session the user started, which runs the whole batch and is the only role that talks to the user.
+The session the user started, which runs the whole batch, owns its state file and is the only role that talks to the user.
 _Avoid_: lead, coordinator
 
 **Implementer**:
-The agent that builds one ticket and answers its flags.
+The agent that builds one ticket and answers its risk checks.
 _Avoid_: builder, worker
-
-**Ticket reviewer**:
-The cheap agent that reads one ticket's diff once and writes flags.
-_Avoid_: Haiku reviewer, gate reviewer
 
 **Correctness reviewer**:
 The final-review agent that judges whether the batch does what its tickets and ADR say, without bugs.

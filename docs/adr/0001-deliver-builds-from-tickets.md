@@ -4,6 +4,8 @@ status: accepted
 
 # Deliver builds from tickets, reviews cheaply per ticket and strongly per batch
 
+Amended by [0002](0002-implementers-check-their-own-risks.md): the Haiku ticket reviewer is dropped, and implementers answer risk checks instead.
+
 `deliver` no longer plans or specs. The ADR and Linear tickets a grilling session writes are the build input. An Opus implementer builds each ticket and records its own technical decisions. A Haiku ticket reviewer flags each ticket once. Tickets collect on a batch branch, and one final review (a correctness reviewer and a quality reviewer, both Opus, one fix round) runs before the batch goes to the integration branch and deploys. We chose this because the ATE-488 batch (2026-09-24/25) cost about 33M weighted tokens per merged PR and ran into the user's 5-hour and weekly limits. Two-thirds of that went to spec planners that wrote and proved each change in full (byte-exact files, hash pins, mutation probes, replays) before an implementer typed it again.
 
 ## Considered options

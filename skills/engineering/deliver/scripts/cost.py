@@ -5,7 +5,7 @@ Usage:
   cost.py --batch <slug> [--session-dir <dir>] [--session-jsonl <file>] [--state .deliver/state.json]
           [--markdown] [--summary-row] [--summary-header]
 
-Rows: per ticket "implement" (tickets[id].agent) and "ticket review" (tickets[id].reviewer);
+Rows: per ticket "implement" (tickets[id].agent) and, for batches before ADR 0002, "ticket review" (tickets[id].reviewer);
 batch "final review" (batch.reviewers plus batch.confirm); "fix" (batch.fixer); each id key may hold one id, a list or a map of role to id;
 "orchestrate" (the orchestrator's own transcript, sliced to [batch.startedAt, batch.closedAt or
 now]); "unassigned" (any other sub-agent transcript in the session directory, one row each, also

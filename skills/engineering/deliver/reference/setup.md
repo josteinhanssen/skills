@@ -11,7 +11,7 @@ Look first; ask only what the workspace cannot tell you.
 - Repositories: every git repository in the workspace, its `origin` host, and which CLI is signed in (`az repos`, `gh`).
 - Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds, and which merge types the integration branch's policy allows (a batch PR wants a merge commit; squash-only is recorded as such).
 - Deploy: pipeline definitions, whether a merge deploys by itself or runs are queued by hand, after-deploy steps.
-- Test rungs: `package.json` scripts, solution and project files, validation ladders in CLAUDE.md, durations.
+- Test rungs: `package.json` scripts, solution and project files, validation ladders in CLAUDE.md, durations. Tests that need a real database: how they are marked, the switch that runs them, and how many a plain run skips.
 - Sandbox: worktree directories, port ranges, database naming, per-worktree caches.
 - Quality: standards documents, and where shared components, helpers and types live.
 - Never: prohibitions in CLAUDE.md or AGENTS.md (databases, environments, secrets).
@@ -26,7 +26,7 @@ Fill `templates/delivery-profile.md` and write it to `docs/agents/delivery-profi
 
 ## 4. Install the role agents
 
-Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner, plan-reviewer, judge, implementer-escalation, reviewer-spec, reviewer-standards). Copy the five templates from `templates/agents/`, keeping their frontmatter (`model`, `effort`, `tools`). Replace each `{profile extract}` marker with the profile fields it names, and every `scripts/` reference with the absolute path of the installed skill's `scripts/` directory. Add no other project prose; the templates are the contract and the profile is the data.
+Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner, plan-reviewer, judge, implementer-escalation, reviewer-spec, reviewer-standards, ticket-reviewer). Copy the four templates from `templates/agents/`, keeping their frontmatter (`model`, `effort`, `tools`). Replace each `{profile extract}` marker with the profile fields it names, and every `scripts/` reference with the absolute path of the installed skill's `scripts/` directory. Add no other project prose; the templates are the contract and the profile is the data.
 
 Newly installed agents can take a few minutes to register in a running session. Retry the spawn by name before anything else.
 
