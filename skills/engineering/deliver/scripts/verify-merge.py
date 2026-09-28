@@ -2,11 +2,14 @@
 """Content verification of merges, host-agnostic.
 
 Usage:
-  verify-merge.py --repo <path> --delta <from-ref> <to-ref> [--test-pattern <regex>] [--doc-pattern <regex>]
+  verify-merge.py --repo <path> --delta <from-ref> <to-ref> [--sizes] [--test-pattern <regex>] [--doc-pattern <regex>] [--generated-pattern <regex>]
   verify-merge.py --repo <path> --reviewed <ref> --merged <ref>
 
 --delta: lists the files changed between the two refs, added/removed line counts, each
-classified test / doc / production, and a totals line. Exit 0 unless a ref fails to resolve.
+classified doc / generated / test / production, and a totals line. Exit 0 unless a ref fails to
+resolve. With --sizes it prints only the changed lines (added plus removed) per class, on one line:
+`production <n> test <n> doc <n> generated <n>`. Generated files are EF migration designers and
+snapshots, lock files and *.g.cs; they count toward no size bar.
 
 --reviewed/--merged: exit 0 when the merged ref's tree equals the reviewed ref's tree, or when
 the merged ref is the clean merge of the reviewed ref onto a target that moved (the target's tip
@@ -24,6 +27,7 @@ from pathlib import Path
 
 DEFAULT_TEST_PATTERN = r"(\.test\.[cm]?[jt]sx?$|\.spec\.[cm]?[jt]sx?$|(^|/)tests?/|(^|/)__tests__/|(^|/)[^/]+\.[A-Za-z]*Tests?/|[A-Za-z]Tests?\.cs$|budget\.json$|_test\.go$|_test\.py$|(^|/)test_[^/]+\.py$)"
 DEFAULT_DOC_PATTERN = r"(\.md$|\.mdx$|(^|/)docs/|(^|/)README(\.[^/]+)?$)"
+DEFAULT_GENERATED_PATTERN = r"(\.Designer\.cs$|ModelSnapshot\.cs$|\.g\.cs$|\.generated\.[^/]+$|(^|/)package-lock\.json$|(^|/)packages\.lock\.json$)"
 
 
 def git(repo: Path, *args: str) -> str:
@@ -37,14 +41,16 @@ def resolve(repo: Path, ref: str) -> str | None:
         return None
 
 
-def cmd_delta(repo: Path, from_ref: str, to_ref: str, test_pattern: str, doc_pattern: str) -> int:
+def cmd_delta(repo: Path, from_ref: str, to_ref: str, patterns: dict[str, str], sizes: bool) -> int:
     from_sha, to_sha = resolve(repo, from_ref), resolve(repo, to_ref)
     if not from_sha or not to_sha:
         print(f"refs: from={from_sha} to={to_sha} (unresolved)")
         return 1
-    test_re, doc_re = re.compile(test_pattern), re.compile(doc_pattern)
+    # First match wins, in this order: a designer file under docs/ is still a doc.
+    classes = [(kind, re.compile(patterns[kind])) for kind in ("doc", "generated", "test")]
     numstat = git(repo, "diff", "--numstat", from_ref, to_ref).strip()
-    counts = {"test": 0, "doc": 0, "production": 0}
+    counts = {"production": 0, "test": 0, "doc": 0, "generated": 0}
+    changed = dict.fromkeys(counts, 0)
     total_added = total_removed = 0
     lines = []
     for line in numstat.splitlines():
@@ -52,17 +58,22 @@ def cmd_delta(repo: Path, from_ref: str, to_ref: str, test_pattern: str, doc_pat
         if len(parts) != 3:
             continue
         added, removed, path = parts
-        kind = "doc" if doc_re.search(path) else "test" if test_re.search(path) else "production"
+        kind = next((k for k, pattern in classes if pattern.search(path)), "production")
         counts[kind] += 1
-        total_added += 0 if added == "-" else int(added)
-        total_removed += 0 if removed == "-" else int(removed)
+        a, r = (0 if added == "-" else int(added)), (0 if removed == "-" else int(removed))
+        changed[kind] += a + r
+        total_added += a
+        total_removed += r
         lines.append(f"+{added:<5} -{removed:<5} {kind:<10} {path}")
+    if sizes:
+        print(" ".join(f"{kind} {n}" for kind, n in changed.items()))
+        return 0
     print(f"delta {from_sha}..{to_sha} ({len(lines)} files)")
     for line in lines:
         print(line)
     print(
         f"== totals: files {len(lines)} (test {counts['test']}, doc {counts['doc']}, "
-        f"production {counts['production']})  +{total_added} -{total_removed}"
+        f"generated {counts['generated']}, production {counts['production']})  +{total_added} -{total_removed}"
     )
     return 0
 
@@ -105,11 +116,14 @@ def main() -> None:
     parser.add_argument("--merged")
     parser.add_argument("--test-pattern", default=DEFAULT_TEST_PATTERN)
     parser.add_argument("--doc-pattern", default=DEFAULT_DOC_PATTERN)
+    parser.add_argument("--generated-pattern", default=DEFAULT_GENERATED_PATTERN)
+    parser.add_argument("--sizes", action="store_true", help="with --delta: one line of changed lines per class")
     args = parser.parse_args()
     repo = Path(args.repo)
 
     if args.delta:
-        sys.exit(cmd_delta(repo, args.delta[0], args.delta[1], args.test_pattern, args.doc_pattern))
+        patterns = {"test": args.test_pattern, "doc": args.doc_pattern, "generated": args.generated_pattern}
+        sys.exit(cmd_delta(repo, args.delta[0], args.delta[1], patterns, args.sizes))
     if args.reviewed and args.merged:
         sys.exit(cmd_compare(repo, args.reviewed, args.merged))
     sys.exit("pass --delta <from> <to>, or --reviewed <ref> --merged <ref>")

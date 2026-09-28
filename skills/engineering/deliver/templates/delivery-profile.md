@@ -51,12 +51,13 @@ One block per repository, in delivery order (the first one's batch PR merges fir
 - Invariants (each a command that fails loudly): `{commands | none}`
 - Worker cap for an agent's multi-file run: {for example --maxWorkers=4}
 - Known flakes and how to attribute them: {list | none}
+- Database-backed tests: {how they are marked, the switch that runs them (for example an environment variable naming a migrated database) and what the rungs do without it, e.g. report them as skipped | none}
 
 ## Sandbox
 
 - Worktree path pattern: `{repo}/.worktrees/{ticket}`; orchestrator scratch: `{repo}/.worktrees/batch-{slug}`; fixer: `{repo}/.worktrees/fix-{slug}`
 - Port ranges: {per purpose}
-- Database naming: {pattern | none}
+- Database naming: {pattern per ticket, fixer, correctness reviewer and batch; how to create, migrate and drop one | none}
 - Cache directories that must be per worktree: {list}
 - Dependency install: `{command}`; symlink rule: {text}
 - Silence threshold before a liveness check: {minutes}
