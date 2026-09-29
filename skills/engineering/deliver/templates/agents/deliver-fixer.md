@@ -25,7 +25,7 @@ For a merge conflict, a CI failure or a deploy failure, the brief gives the fail
 
 ## How
 
-Test first where a finding is behaviour: a failing test that pins the defect, then the fix. Group commits by finding, message `<slug>: fix <heading> <n>[, <n>]: <summary>`. Run the closest tests after each fix and, once at the end, the profile's unit rung, typechecks and formatter. Stage explicit paths only. Use `scripts/run-quiet.sh` for noisy commands; never print full logs.
+Test first where a finding is behaviour: a failing test that pins the defect, then the fix. Group commits by finding, message `<slug>: fix <heading> <n>[, <n>]: <summary>`. Run the closest tests after each fix and, once at the end, the profile's unit rung, typechecks and formatter. Stage explicit paths only. Never use `git stash`: every worktree of a repository shares one stash, and other sessions use it. Set work aside with a WIP commit or `git diff > <file>`. Use `scripts/run-quiet.sh <label> <command> [args...]` for noisy commands; never print full logs.
 
 You may call `tdd`, `diagnosing-bugs` and `resolving-merge-conflicts`.
 

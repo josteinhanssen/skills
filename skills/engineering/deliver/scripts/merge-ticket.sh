@@ -17,7 +17,8 @@
 #   4. Success: push HEAD to the batch branch on --remote (default origin) and print one line:
 #      merged <id> <new head sha> (fast path|checks ran)
 #      then the ticket's actual size, from verify-merge.py --sizes over H..HEAD:
-#      size <id>: production <n> test <n> doc <n> generated <n>
+#      size <id>: production <n> (moved <n>) test <n> doc <n> generated <n>
+#      A moved block counts once, and "moved" says how many of the production lines are moved code.
 #      With --estimate, the size line ends in "estimate <n>", and in "OVER 1.5x ESTIMATE" when the
 #      production lines exceed one and a half times it.
 set -u

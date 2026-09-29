@@ -139,6 +139,26 @@ What it taught the skill:
 - Estimates taken from per-file counts of existing code ran 1.0 to 1.6 times low; intake multiplies them by 1.4.
 - Smaller: the orchestrator's notes held a copy of a profile line that changed mid-run, so notes now point at profile lines instead. The weekly readings are recorded after `init`, not into the previous batch. A Decision relayed between two running tickets goes on the carry list; b3's relayed Decision became a quality finding.
 
+**4. `ate-488-b4` (Memerix backend and frontend, 2026-09-28 to 2026-09-29).** ATE-518 and ATE-496, split into four slices (ATE-543 to ATE-546), went through a backend batch PR (PR 5942) and a frontend one (PR 5943) to dev: 16.27M weighted tokens, 3.25M per ticket. It was the first batch with the frontend repository. It ran on the user's Team account, where weekly usage went from 0% to 19%, 3.8% a ticket, so its weekly figure doesn't compare with the personal plan's rows. The final review found 0 Blocking, 6 Should-fix and 13 Nits, and the fix round fixed all 19. The tracker couldn't be written from that account, so the batch queued its 38 tracker writes, and a clerk on the personal account sent them after the close.
+
+| Role | Agents | Weighted | Opus-eq | Share (opus-eq) |
+|---|---|---|---|---|
+| Implementer | 5 | 6.99M | 6.99M | 43% |
+| Final review, both axes | 2 | 3.18M | 3.18M | 20% |
+| Fixer | 2 | 3.49M | 3.49M | 21% |
+| Orchestrator | — | 2.61M | 2.61M | 16% |
+
+What it taught the skill:
+
+- On the Team account, Linear was a local MCP server that nobody had signed in to. The run went on with pasted tickets, provisional ids (`ATE-496-BE1`) and a queue file for the writes, and run.md now has that mode ("Tracker offline"). The clerk still hasn't run inside a batch.
+- Agents now hand their report back through a `SubagentHandback` tool call, and `save-report.py` found neither reviewer's report. It reads those calls first now.
+- The frontend path had three gaps. The frontend scratch worktree never ran `npm ci`. The Jest-only unit rung doesn't typecheck, so a type break between two frontend tickets built side by side would have reached the final review. Two full rungs running at once crashed a Jest worker. Step 3 now runs the setup rung in each scratch worktree, the merge checks add a typecheck when the unit rung doesn't compile, and full rungs run one repository at a time.
+- One implementer's risk check called paths "serialised by the lock" that no test raced. The correctness reviewer measured two of them on SQL Server and found both broken. Risk-check answers now say "not tested" where the implementer reasoned from the code, and the correctness reviewer starts with those.
+- The fixer died on the 5-hour limit (HTTP 429) instead of waiting, because `autoContinueAtUsageLimit` covers only the main session. A second fixer, briefed from `git log`, finished without redoing work. run.md now respawns an agent that dies on the limit after the reset, and that respawn doesn't use up its one respawn. The fixer also used `git stash`, whose stack every worktree of a repository shares. Agents no longer use it.
+- `merge-ticket.sh` counted a moved block twice. ATE-518 read 393 production lines against an estimate of 150. Counted once, it is 318, and 75 of them are moved. The rest of the code it moved was rewritten on the way.
+- The vote was refused as self-approval a third time. The Memerix profile now says batch PRs are completed by hand, so step 1 doesn't ask for merge consent and step 7.3 goes straight to the by-hand message.
+- The orchestrator never compacted and peaked at 84% of 300k with no tracker echoes. Its own reads of run.md, the handoff, the profile and the plan took it to 55% before the first merge.
+
 ### History
 
 `deliver-v1` (tag) is the plan, spec, run and close design with its seven trials, from the wave-N baseline through hygiene-2, and the lessons each one fed back into the skill. Read it with `git show deliver-v1:README.md`. The ATE-488 figures above are that design's last measurement.
