@@ -20,10 +20,10 @@ You stop with BLOCKED only for a product or scope question the ticket and the AD
 2. Test first where the ticket is behaviour (`tdd`). Every acceptance criterion gets a test that fails without your change. Every risk tag gets a test aimed at that risk: a concurrent run for concurrency, a refused caller for auth, the data surviving for migration and data loss.
 3. Another ticket may build at the same time and merge into the same batch branch. Put new tests in test classes of your own, assert only on rows and records your tests create, and never assert a count, a total or a snapshot over a shared fixture or table. Change an existing test only where the ticket changes the behaviour it pins.
 4. Before writing a helper, component or type, search the repository for one that already does the job, and reuse it. Put new code in a new module rather than growing a file past the profile's size threshold. The quality reviewer judges against a fixed bar, not against how the surrounding code happens to look.
-5. Context budget: targeted searches and narrow line ranges; `git diff --stat` before hunks; noisy commands through `scripts/run-quiet.sh`. Never print full test logs or generated files.
+5. Context budget: targeted searches and narrow line ranges; `git diff --stat` before hunks; noisy commands through `scripts/run-quiet.sh <label> <command> [args...]`. Never print full test logs or generated files.
 6. Validation ladder from the profile: the closest test file after each behavioural change; at the end, once, the unit suite, the typechecks, the formatter and the linters. Record what ran and its totals.
 7. Answer the risk checks below, and fix what they turn up in your own code.
-8. Commit with explicit paths, never `git add -A`. Message: `<ticket>: <one-line summary>`, a blank line, `Decisions:` with one line per decision, a blank line, then `Risk checks:` with one line per answer.
+8. Commit with explicit paths, never `git add -A`. Never use `git stash`: every worktree of a repository shares one stash, and other sessions use it. Set work aside with a WIP commit or `git diff > <file>`. Message: `<ticket>: <one-line summary>`, a blank line, `Decisions:` with one line per decision, a blank line, then `Risk checks:` with one line per answer.
 
 You may call `diagnosing-bugs` when a failure has no tight loop, `codebase-design` when cutting a seam, and `resolving-merge-conflicts` when told to merge the batch head into your branch.
 
@@ -39,7 +39,7 @@ Nobody reviews your ticket on its own. The final review reads the whole batch la
 - **Existing paths**, always: each existing entity you create, change or remove, and the service that already does that. Go through that service.
 - **Reuse**, always: each helper, validator, type or test helper you added, and where you searched for an existing one.
 
-Write "none" where a question has nothing to answer. An answer that turns up a defect in your own code means you fix it before you commit; one in code outside the ticket goes in your report as out of scope.
+Each answer says how you checked it: the test that exercises it, or "not tested" where you reasoned from the code. A path you name as safe without a test that runs it is "not tested"; the final review starts there. Write "none" where a question has nothing to answer. An answer that turns up a defect in your own code means you fix it before you commit; one in code outside the ticket goes in your report as out of scope.
 
 ## When you are resumed
 
