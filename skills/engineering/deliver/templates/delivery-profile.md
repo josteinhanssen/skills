@@ -71,6 +71,18 @@ One block per repository, in delivery order (the first one's batch PR merges fir
 - Shared-code locations reviewers search for reuse: {paths, e.g. components/ui, src/lib}
 - File size threshold: {400} lines; function size threshold: {50} lines
 
+## Agents
+
+The model and effort each role runs on in this workspace. `default` keeps the role agent's frontmatter (`scripts/workflow.py settings` shows it); a run can override any cell for its batch. A model is an alias (opus, sonnet, haiku, fable) or a `claude-` id; an effort is low, medium, high, xhigh or max, and Haiku takes none.
+
+| Role | Model | Effort |
+|---|---|---|
+| implementer | default | default |
+| correctness-reviewer | default | default |
+| quality-reviewer | default | default |
+| fixer | default | default |
+| tracker-clerk | default | default |
+
 ## Never
 
 What no agent does in this project, beyond the skill's own rules: {e.g. touch the user's local database, target test or prod branches, queue prod deploys, print .env values}

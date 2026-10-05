@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Deliver
 
-`/deliver <ADR path | ticket ids> [--into <branch>]` runs the tickets to the integration branch and the environment it deploys to, and stops only when it needs the user. Read the playbook for the command in full before doing anything else. With no arguments, print the table below and stop.
+`/deliver <ADR path | ticket ids> [--into <branch>] [--model <role>=<model>] [--effort <role>=<effort>]` runs the tickets to the integration branch and the environment it deploys to, and stops only when it needs the user. Read the playbook for the command in full before doing anything else. With no arguments, print the table below and stop.
 
 | Command | Playbook | Reads | Produces |
 |---|---|---|---|
@@ -22,6 +22,7 @@ disable-model-invocation: true
 - **Carry list**: `.deliver/<slug>/carry.md`, what the batch has to act on that no diff shows: follow-ups from a handoff or an earlier batch, and out-of-scope notes from implementers. Every item is resolved, filed or dropped before delivery.
 - **Finding**: a defect the final review verified, with a severity (Blocking, Should-fix, Nit) or marked Follow-up when it lies outside the batch's own code.
 - **Delivered**: merged to the integration branch and running wherever that branch deploys.
+- **Continuation**: a fresh agent of the same role that carries on an earlier one's work from its worktree or fix branch, with the earlier brief and either one thing to do or the rest of the work. It takes the place of resuming an agent, which a workflow doesn't allow.
 
 ## Principles
 
@@ -29,6 +30,7 @@ disable-model-invocation: true
 - **The implementer decides the technical calls.** It records each one under `Decisions:` in its commit, and the final review checks them against the ADR. Only product, scope and ADR questions reach the user.
 - **Self-check per ticket, strong review per batch.** Each implementer answers its ticket's risk checks from the code, including code outside its diff. A correctness reviewer and a quality reviewer on Opus read the whole batch, starting from those answers and the carry list, and hand one fixer one round. A confirm pass runs only after a Blocking finding. ADR 0002 records why the Haiku ticket reviewer went.
 - **Context is the cost.** Cost scales with context size times calls, so every agent is fresh per ticket or per batch, has an explicit tools list with no MCP servers, and reports in under 300 words; the final reviewers' report is their findings, in under 900. The tracker clerk is the one agent with an MCP server: it holds the tracker's tools, so the issues they echo back never reach the orchestrator. The orchestrator reads reports and script output, never transcripts, and copies the final reviewers' findings with `scripts/save-report.py` instead of retyping them. The user's settings cap every session at 300k tokens (`autoCompactWindow`).
+- **The batch shows as it runs.** Every agent runs in a workflow named for its step (`deliver <slug> · ATE-543`, `deliver <slug> · final review`), so the user's background tasks show each ticket, review and fix as it happens, with each agent's model. The orchestrator stays in this session and launches each one; `scripts/workflow.py` renders the script and gives each agent its role's model and effort: the role agent's frontmatter by default, changed for the workspace in the profile's Agents table or for one run with `--model` and `--effort` (ADR 0003).
 - **One or two tickets at a time.** Each ticket branches from the batch head, so nothing rebases and nothing needs locks or grants.
 - **Everything project-specific lives in the profile.** The skill never names a tracker, a host, a branch or a test runner.
 - **State lives in files.** `.deliver/state.json`, `tickets.md`, the carry list, the notes (the user's standing instructions for the run) and the findings files let a cold session resume.

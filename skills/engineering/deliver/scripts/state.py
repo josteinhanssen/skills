@@ -10,7 +10,7 @@ Usage (run from the workspace root the profile names):
   state.py show
 
 Values are strings unless they parse as JSON (numbers, lists, objects, true/false/null), so
-`blockedBy=["A-1"]` and `reviewers={"correctness":"x"}` work. `init` stores the ADR path as an
+`blockedBy=["A-1"]` and `clerks=["wf_x"]` work. `init` stores the ADR path as an
 absolute path, since agents working in worktrees read it.
 
 One session owns a batch. `init` records the session's $CLAUDE_CODE_SESSION_ID as `batch.owner`,
@@ -47,16 +47,16 @@ SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
 
 KNOWN_BATCH_KEYS = {
     "slug", "adr", "phase", "owner", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
-    "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "reviewers", "fixer", "confirm", "clerks",
-    "followUps",
+    "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "agentSettings", "reviewers", "fixer",
+    "confirm", "clerks", "followUps",
 }
 KNOWN_REPO_KEYS = {
     "path", "into", "batchBranch", "baseHead", "scratch", "reviewedHead", "pr",
     "mergedHead", "deployRuns",
 }
 KNOWN_TICKET_KEYS = {
-    "repo", "phase", "blockedBy", "estimate", "branch", "worktree", "agent", "head",
-    "prodLines", "weeklyAtEnd", "respawns",
+    "repo", "phase", "blockedBy", "estimate", "branch", "worktree", "agent", "runs", "head",
+    "prodLines", "weeklyAtEnd", "continuations",
 }
 
 BATCH_PHASES = {"building", "final-review", "fixing", "delivering", "closing", "delivered", "paused"}
@@ -64,8 +64,9 @@ TICKET_PHASES = {"queued", "building", "merged", "blocked"}
 
 # Keys an orchestrator has written where it meant a known one.
 KNOWN_MISTAKES = {
-    "confirmReviewer": "confirm (a list of agent ids)",
-    "confirmReviewers": "confirm (a list of agent ids)",
+    "confirmReviewer": "confirm (a list of workflow run ids)",
+    "confirmReviewers": "confirm (a list of workflow run ids)",
+    "respawns": "continuations (the count of continuations launched for an agent that failed or went silent)",
 }
 
 

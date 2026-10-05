@@ -31,7 +31,7 @@ The previous version (tag `deliver-v1`) planned a batch, then wrote a spec per P
 
 The spec planners wrote each change in full, pinned it by hash, measured mutation probes and replayed it, and then the implementer did the same work again. PR review, the part that most looked like a cost worth cutting, was 4%. What made everything expensive was context size times calls. Planners carried 534k tokens of context on every call, and the orchestrator 509k across 526 calls. Weighted tokens here are input 1×, cache read 0.1×, cache write 2×, output 5×.
 
-So the grilling is the plan. The decisions a spec used to make, the implementer now makes and records; review moves from per PR to per batch; and every agent's context stays small. ADR [0001](docs/adr/0001-deliver-builds-from-tickets.md) records the trade: the pre-code gate did find real defects (a measured deadlock, a token-policy hole), and those now have to come from risk-tag tests or the final review. ADR [0002](docs/adr/0002-implementers-check-their-own-risks.md) replaced the per-ticket Haiku reviewer with risk checks the implementer answers itself.
+So the grilling is the plan. The decisions a spec used to make, the implementer now makes and records; review moves from per PR to per batch; and every agent's context stays small. ADR [0001](docs/adr/0001-deliver-builds-from-tickets.md) records the trade: the pre-code gate did find real defects (a measured deadlock, a token-policy hole), and those now have to come from risk-tag tests or the final review. ADR [0002](docs/adr/0002-implementers-check-their-own-risks.md) replaced the per-ticket Haiku reviewer with risk checks the implementer answers itself. ADR [0003](docs/adr/0003-agents-run-in-workflows.md) runs every agent in a workflow, so the batch shows in the background tasks as it runs.
 
 ### The flow
 
@@ -55,7 +55,7 @@ The session stops for the user only for a product or scope question, anything pa
 | Fixer | Opus 5.5, high | the one fix round, or one CI or deploy failure | files, shell, skills |
 | Tracker clerk | Haiku 4.5 | a numbered list of tracker writes | the tracker's tools; no files or shell |
 
-No role but the tracker clerk gets MCP servers, and none spawns another agent. The clerk exists so that the whole issues a tracker echoes back after each write land in a throwaway Haiku context instead of the orchestrator's. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
+The models and efforts above are the defaults, set in each role agent's frontmatter. The profile's Agents table changes them for a workspace, and `--model <role>=<model>` and `--effort <role>=<effort>` change them for one run. `scripts/workflow.py settings` shows what each role runs on and where each value came from, and the cost row of a batch that ran a role off its default names that role. No role but the tracker clerk gets MCP servers, and none spawns another agent. Each runs in a workflow the orchestrator launches for its step (`deliver <slug> · ATE-543`, `deliver <slug> · final review`), which shows its agents, with their models, in the background tasks. A workflow agent can't be resumed, so going back to one means a continuation: a fresh agent of the same role with the earlier brief, its worktree as it stands, and either one thing to do or the rest of the work. The clerk exists so that the whole issues a tracker echoes back after each write land in a throwaway Haiku context instead of the orchestrator's. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
 
 ### Cost controls
 
@@ -70,7 +70,7 @@ No role but the tracker clerk gets MCP servers, and none spawns another agent. T
 
 | Command | What it does |
 |---|---|
-| `/deliver <ADR \| tickets> [--into <branch>]` | the whole run, resumable from `.deliver/state.json` |
+| `/deliver <ADR \| tickets> [--into <branch>] [--model <role>=<model>] [--effort <role>=<effort>]` | the whole run, resumable from `.deliver/state.json` |
 | `/deliver status` | prints the batch from the state file, no model work |
 | `/deliver setup` | writes or migrates the project profile, installs the role agents, checks the two settings |
 
@@ -173,5 +173,6 @@ skills/engineering/deliver/
   agents/openai.yaml       interface shim for the installer
   reference/               run, status and setup playbooks
   templates/               the profile, the four role agents and the tracker clerk
-  scripts/                 state file, ticket merge, merge verification, sweep, cost, report saver, quiet runner
+  workflows/               the workflow script every spawn point renders from
+  scripts/                 state file, workflow renderer, ticket merge, merge verification, sweep, cost, report saver, quiet runner
 ```

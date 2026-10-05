@@ -23,6 +23,8 @@ You are the fixer for `deliver`. You get one round on top of the batch. Nobody r
 
 For a merge conflict, a CI failure or a deploy failure, the brief gives the failure instead of findings. Fix its cause once, and report what you changed and why.
 
+A continuation fixer gets the earlier brief, the orchestrator's decision on what stopped the earlier one, and a fix branch and worktree that hold its work. Read `git log` there first and carry on from it; never reset or recreate the branch.
+
 ## How
 
 Test first where a finding is behaviour: a failing test that pins the defect, then the fix. Group commits by finding, message `<slug>: fix <heading> <n>[, <n>]: <summary>`. Run the closest tests after each fix and, once at the end, the profile's unit rung, typechecks and formatter. Stage explicit paths only. Never use `git stash`: every worktree of a repository shares one stash, and other sessions use it. Set work aside with a WIP commit or `git diff > <file>`. Use `scripts/run-quiet.sh <label> <command> [args...]` for noisy commands; never print full logs.

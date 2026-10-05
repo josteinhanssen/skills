@@ -7,17 +7,21 @@ Usage:
 
 Rows: per ticket "implement" (tickets[id].agent) and, for batches before ADR 0002, "ticket review" (tickets[id].reviewer);
 batch "final review" (batch.reviewers plus batch.confirm); "fix" (batch.fixer); "tracker" (batch.clerks); each id key may hold
-one id, a list or a map of role to id;
+one id, a list or a map of role to id. An id is an agent id or a workflow run id (`wf_...`), which
+stands for every agent in that run (tickets[id].runs holds a ticket's runs);
 "orchestrate" (the orchestrator's own transcript, sliced to [batch.startedAt, batch.closedAt or
 now]); "unassigned" (any other sub-agent transcript in the session directory, one row each, also
 sliced to that window so an earlier or later batch in the same session does not pollute it).
 
 The session directory is `~/.claude/projects/<project>/<session-id>/`: it holds one
-`subagents/agent-<id>.jsonl` per sub-agent, and the orchestrator's own transcript is the sibling
-`<session-id>.jsonl`. The temporary `tasks/<id>.output` copies are read for any agent missing from
-`subagents/`. Each is a JSONL transcript with `usage` blocks on assistant messages. The script takes
+`subagents/agent-<id>.jsonl` per sub-agent spawned with the Agent tool, one
+`subagents/workflows/<run id>/agent-<id>.jsonl` per agent of a workflow run, next to that run's
+`journal.jsonl`, and the orchestrator's own transcript is the sibling `<session-id>.jsonl`. A
+recorded run id with no journal in that directory is looked up in every session, since a batch
+claimed by a new session holds runs the earlier one launched. The
+temporary `tasks/<id>.output` copies are read for any agent missing from `subagents/`. Each is a JSONL transcript with `usage` blocks on assistant messages. The script takes
 the directory from --session-dir, the state file's `batch.sessionDir` or $CLAUDE_SESSION_DIR, and
-otherwise finds it by looking up the agent ids the state file records under ~/.claude/projects/.
+otherwise finds it by looking up the agent and run ids the state file records under ~/.claude/projects/.
 
 Weighted tokens follow the explain-usage convention: input 1x, cache reads 0.1x, cache writes 2x,
 output 5x. Assistant messages are deduped by id (a resumed or retried transcript can repeat one).
@@ -26,6 +30,9 @@ The opus-eq column further weights each message by a factor read from its own mo
 
 --summary-row prints one markdown row for `.deliver/costs.md`:
   | <YYYY-MM-DD> | <slug> | <tickets> | <weighted total, M> | <weighted per ticket, M> | <opus-eq per ticket, M> | <weekly % per ticket or n/a> |
+The slug cell names every role that ran off its default model or effort (`ate-488-b6 (implementer
+sonnet medium)`), from `workflow.py settings` run in this directory, so a row is averaged only with
+rows that ran the same settings.
 Weekly % per ticket is (batch.weeklyAtEnd - batch.weeklyAtStart) / tickets, falling back to the
 latest ticket's weeklyAtEnd when the batch has none; "n/a" without a start and an end. Plan usage
 reads in whole percents, so per-ticket readings rarely move; the batch-level end is the one that counts. --summary-header prints that row's header (combine with --summary-row
@@ -39,6 +46,8 @@ import os
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+from workflow import PROFILE, changed, effective, find_run_dir, run_agents
 
 WEIGHTS = {"input": 1.0, "cache_read": 0.1, "cache_write": 2.0, "output": 5.0}
 MODEL_FACTORS = (("haiku", 0.25), ("sonnet", 0.5), ("opus", 1.0), ("fable", 2.5))
@@ -129,15 +138,19 @@ def agent_ids(value) -> list[str]:
     return [value] if isinstance(value, str) else [v for v in value if isinstance(v, str)]
 
 
-def build_mapping(state: dict) -> dict[str, str]:
-    """agent id -> row label, first assignment wins."""
+def build_mapping(state: dict, runs: dict[str, list[str]] | None = None) -> dict[str, str]:
+    """agent id -> row label, first assignment wins. A workflow run id found in `runs` claims each
+    of its agents; one not found there stays in the mapping as it is."""
     mapping: dict[str, str] = {}
+    runs = runs or {}
 
     def claim(value, row) -> None:
         for agent_id in agent_ids(value):
-            mapping.setdefault(agent_id, row)
+            for one in runs.get(agent_id, [agent_id]):
+                mapping.setdefault(one, row)
 
     for tid, entry in state.get("tickets", {}).items():
+        claim(entry.get("runs"), f"{tid} implement")
         claim(entry.get("agent"), f"{tid} implement")
         claim(entry.get("reviewer"), f"{tid} ticket review")
     batch = state.get("batch", {})
@@ -164,8 +177,10 @@ def summary_header() -> str:
     return f"{header}\n{sep}"
 
 
-def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict]) -> str:
+def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict], state_path: Path) -> str:
     batch = state.get("batch", {})
+    slug = batch.get("slug", batch_slug)
+    moved = changed(effective(Path(".claude/agents"), Path(PROFILE), state_path, slug))
     tickets = state.get("tickets", {})
     n = len(tickets)
     weighted_total = sum(weighted(t) for t in rows_totals.values())
@@ -187,7 +202,7 @@ def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict]) -> s
         weekly_pct = "n/a"
 
     return (
-        f"| {date} | {batch.get('slug', batch_slug)} | {n} | {weighted_m:.2f} | "
+        f"| {date} | {slug}{f' ({moved})' if moved else ''} | {n} | {weighted_m:.2f} | "
         f"{weighted_per_ticket_m:.2f} | {opus_per_ticket_m:.2f} | {weekly_pct} |"
     )
 
@@ -199,17 +214,31 @@ def agent_transcripts(session_dir: Path) -> dict[str, Path]:
     found: dict[str, Path] = {}
     for path in sorted((session_dir / "subagents").glob("agent-*.jsonl")):
         found[path.stem.removeprefix("agent-")] = path
+    for path in sorted((session_dir / "subagents" / "workflows").glob("*/agent-*.jsonl")):
+        found.setdefault(path.stem.removeprefix("agent-"), path)
     for path in sorted((session_dir / "tasks").glob("*.output")):
         found.setdefault(path.stem, path)
     return found
 
 
+def workflow_runs(session_dir: Path) -> dict[str, list[str]]:
+    """Agent ids per workflow run id, from each run's journal in the session directory."""
+    return {
+        journal.parent.name: [a["agentId"] for a in run_agents(journal.parent) if a["agentId"]]
+        for journal in sorted((session_dir / "subagents" / "workflows").glob("*/journal.jsonl"))
+    }
+
+
 def find_session_dir(state: dict) -> Path | None:
-    """The session directory holding any agent id the state file records, searched across projects."""
+    """The session directory holding any agent or run id the state file records, searched across projects."""
     projects = Path.home() / ".claude" / "projects"
-    for agent_id in build_mapping(state):
-        for path in projects.glob(f"*/*/subagents/agent-{agent_id}.jsonl"):
+    for one_id in build_mapping(state):
+        for path in projects.glob(f"*/*/subagents/agent-{one_id}.jsonl"):
             return path.parent.parent
+        for path in projects.glob(f"*/*/subagents/workflows/*/agent-{one_id}.jsonl"):
+            return path.parents[3]
+        for path in projects.glob(f"*/*/subagents/workflows/{one_id}/journal.jsonl"):
+            return path.parents[3]
     return None
 
 
@@ -236,7 +265,16 @@ def main() -> None:
         sys.exit(f"no sub-agent transcripts under {session_dir} (looked in subagents/ and tasks/)")
     window = (batch.get("startedAt"), batch.get("closedAt"))
 
-    mapping = build_mapping(state)
+    runs = workflow_runs(Path(session_dir))
+    for one_id in [i for i in build_mapping(state, runs) if i.startswith("wf_")]:
+        run_dir = find_run_dir(one_id)  # a run another session launched before this one claimed the batch
+        if run_dir:
+            runs[one_id] = [a["agentId"] for a in run_agents(run_dir) if a["agentId"]]
+            for path in sorted(run_dir.glob("agent-*.jsonl")):
+                transcripts.setdefault(path.stem.removeprefix("agent-"), path)
+        else:
+            print(f"warning: workflow run {one_id} has no journal under ~/.claude/projects/", file=sys.stderr)
+    mapping = build_mapping(state, runs)
     rows_totals: dict[str, dict] = defaultdict(blank_totals)
     row_agents: dict[str, list[str]] = defaultdict(list)
     unassigned_rows: list[str] = []
@@ -286,7 +324,7 @@ def main() -> None:
     if args.summary_header:
         print(summary_header())
     if args.summary_row:
-        print(summary_row(state, args.batch, rows_totals))
+        print(summary_row(state, args.batch, rows_totals, Path(args.state)))
     if args.summary_header or args.summary_row:
         return
 
