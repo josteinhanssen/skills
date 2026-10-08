@@ -73,7 +73,7 @@ One block per repository, in delivery order (the first one's batch PR merges fir
 
 ## Agents
 
-The model and effort each role runs on in this workspace. `default` keeps the role agent's frontmatter (`scripts/workflow.py settings` shows it); a run can override any cell for its batch. A model is an alias (opus, sonnet, haiku, fable) or a `claude-` id; an effort is low, medium, high, xhigh or max, and Haiku takes none.
+The model and effort each role runs on in this workspace. `default` keeps the role agent's frontmatter (`scripts/workflow.py settings` shows it); a run can override any cell for its batch. A model is an alias (opus, sonnet, haiku, fable) or a `claude-` id; an effort is low, medium, high, xhigh or max, and Haiku 4.5 takes none.
 
 | Role | Model | Effort |
 |---|---|---|

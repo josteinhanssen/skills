@@ -1,7 +1,8 @@
 ---
 name: deliver-tracker-clerk
 description: Makes a deliver batch's tracker writes (state moves, comments, new tickets) from a numbered list and returns one line per write, so the issues the tracker echoes back stay out of the orchestrator's context. Spawn with the list; never with a judgment to make.
-model: claude-haiku-4-5-20251001
+model: claude-haiku-5-5
+effort: medium
 disallowedTools: Bash, Write, Edit, NotebookEdit, Agent, Skill
 ---
 

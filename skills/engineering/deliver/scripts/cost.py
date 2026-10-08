@@ -25,8 +25,9 @@ otherwise finds it by looking up the agent and run ids the state file records un
 
 Weighted tokens follow the explain-usage convention: input 1x, cache reads 0.1x, cache writes 2x,
 output 5x. Assistant messages are deduped by id (a resumed or retried transcript can repeat one).
-The opus-eq column further weights each message by a factor read from its own model id (haiku
-0.25, sonnet 0.5, opus 1, fable 2.5, unknown 1), so mixed-model batches compare on one scale.
+The opus-eq column further weights each message by a factor read from its own model id, its price
+against Opus 5.5's (Haiku 5.5 0.025, or 0.125 on a prompt over 100K tokens; older Haiku 0.25;
+sonnet 0.5; opus 1; fable 2.5; unknown 1), so mixed-model batches compare on one scale.
 
 --summary-row prints one markdown row for `.deliver/costs.md`:
   | <YYYY-MM-DD> | <slug> | <tickets> | <weighted total, M> | <weighted per ticket, M> | <opus-eq per ticket, M> | <weekly % per ticket or n/a> |
@@ -51,12 +52,19 @@ from workflow import PROFILE, changed, effective, find_run_dir, run_agents
 
 WEIGHTS = {"input": 1.0, "cache_read": 0.1, "cache_write": 2.0, "output": 5.0}
 MODEL_FACTORS = (("haiku", 0.25), ("sonnet", 0.5), ("opus", 1.0), ("fable", 2.5))
+# Haiku 5.5 has two rate cards, chosen by prompt length: $0.10 per MTok input up to 100K prompt
+# tokens and $0.50 above, against Opus 5.5's $4. Older Haiku is $1 at any length.
+HAIKU_5_5_LONG_PROMPT = 100_000
+HAIKU_5_5_FACTORS = (0.025, 0.125)
 
 
-def model_factor(model_id: str | None) -> float:
+def model_factor(model_id: str | None, prompt_tokens: int) -> float:
     if not model_id:
         return 1.0
     low = model_id.lower()
+    if "haiku-5-5" in low:
+        short, long = HAIKU_5_5_FACTORS
+        return long if prompt_tokens > HAIKU_5_5_LONG_PROMPT else short
     for name, factor in MODEL_FACTORS:
         if name in low:
             return factor
@@ -111,7 +119,7 @@ def usage_of_file(path: Path, window: tuple[str | None, str | None] = (None, Non
             totals["turns"] += 1
             model_id = (message or {}).get("model") if isinstance(message, dict) else None
             msg_weighted = inp * WEIGHTS["input"] + cread * WEIGHTS["cache_read"] + cwrite * WEIGHTS["cache_write"] + out * WEIGHTS["output"]
-            totals["opus_eq"] += msg_weighted * model_factor(model_id)
+            totals["opus_eq"] += msg_weighted * model_factor(model_id, inp + cread + cwrite)
     return totals
 
 

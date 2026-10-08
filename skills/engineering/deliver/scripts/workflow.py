@@ -25,9 +25,10 @@ A role's model and effort come from three layers, the later winning field by fie
            when the state holds batch --slug.
 A role is `implementer`, `correctness-reviewer`, `quality-reviewer`, `fixer` or `tracker-clerk`,
 with or without `deliver-`. A model is an alias (opus, sonnet, haiku, fable) or a `claude-` id; an
-effort is low, medium, high, xhigh or max. Haiku takes no effort, so a Haiku role drops any it is
-given. `settings` prints every role's model and effort and the layer each came from, and exits 1 on
-a role, model or effort no layer may hold, naming where it was found.
+effort is low, medium, high, xhigh or max. Haiku 4.5 and older take no effort, so a role on one drops
+any it is given; Haiku 5.5, which the `haiku` alias names, takes one. `settings` prints every role's
+model and effort and the layer each came from, and exits 1 on a role, model or effort no layer may
+hold, naming where it was found.
 
 `agents` prints the run's status and the session that launched it, then one line per agent:
 label, agent id, and its status. While the run is `running`, the statuses come from its
@@ -53,6 +54,7 @@ PHASES = ("Build", "Final review", "Fix", "Confirm", "Tracker")
 ROLES = ("implementer", "correctness-reviewer", "quality-reviewer", "fixer", "tracker-clerk")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 MODEL = re.compile(r"^(opus|sonnet|haiku|fable|claude-[a-z0-9.-]+)$")
+NO_EFFORT = re.compile(r"claude-(haiku-4|3-5-haiku|3-haiku)")  # Haiku 4.5 and older
 PROFILE = "docs/agents/delivery-profile.md"
 STATE = Path(".deliver/state.json")
 TEMPLATE = Path(__file__).resolve().parent.parent / "workflows" / "spawn.js"
@@ -176,6 +178,10 @@ def checked(role: str, field: str, value: str, where: str) -> str:
     return value
 
 
+def takes_effort(model: str) -> bool:
+    return not NO_EFFORT.search(model)
+
+
 def default_layer(agents_dir: Path) -> dict[str, dict[str, str]]:
     """Each role agent's `model` and `effort` from its frontmatter; a role whose file is missing is left out."""
     layer = {}
@@ -234,7 +240,7 @@ def run_layer(state_path: Path, slug: str | None) -> dict[str, dict[str, str]]:
 
 def effective(agents_dir: Path, profile: Path, state_path: Path, slug: str | None) -> dict[str, dict[str, tuple[str, str]]]:
     """Each installed role's model and effort as (value, layer), the later layer winning: default,
-    profile, run. Haiku takes no effort, so a Haiku role drops whatever effort a layer gave it."""
+    profile, run. Haiku 4.5 and older take no effort, so a role on one drops whatever effort a layer gave it."""
     layers = (("default", default_layer(agents_dir)), ("profile", profile_layer(profile)), ("run", run_layer(state_path, slug)))
     settings: dict[str, dict[str, tuple[str, str]]] = {}
     for role in ROLES:
@@ -242,7 +248,7 @@ def effective(agents_dir: Path, profile: Path, state_path: Path, slug: str | Non
         for source, layer in layers:
             for field, value in layer.get(role, {}).items():
                 chosen[field] = (value, source)
-        if "haiku" in chosen.get("model", ("", ""))[0] and "effort" in chosen:
+        if not takes_effort(chosen.get("model", ("", ""))[0]) and "effort" in chosen:
             del chosen["effort"]
         if role in layers[0][1]:
             settings[role] = chosen
@@ -253,8 +259,8 @@ def describe(fields: dict[str, tuple[str, str]], field: str) -> str:
     if field in fields:
         value, source = fields[field]
         return f"{value} ({source})"
-    if field == "effort" and "haiku" in fields.get("model", ("", ""))[0]:
-        return "none (Haiku takes none)"
+    if field == "effort" and not takes_effort(fields.get("model", ("", ""))[0]):
+        return "none (Haiku 4.5 and older take none)"
     return "the session's"
 
 
