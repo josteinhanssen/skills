@@ -48,7 +48,7 @@ SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
 KNOWN_BATCH_KEYS = {
     "slug", "adr", "phase", "owner", "startedAt", "closedAt", "sessionDir", "sessionJsonl",
     "weeklyAtStart", "weeklyCap", "weeklyAtEnd", "mergeConsent", "agentSettings", "reviewers", "fixer",
-    "confirm", "clerks", "followUps",
+    "confirm", "clerks", "followUps", "addedTickets", "needsYou",
 }
 KNOWN_REPO_KEYS = {
     "path", "into", "batchBranch", "baseHead", "scratch", "reviewedHead", "pr",
@@ -56,7 +56,7 @@ KNOWN_REPO_KEYS = {
 }
 KNOWN_TICKET_KEYS = {
     "repo", "phase", "blockedBy", "estimate", "branch", "worktree", "agent", "runs", "head",
-    "prodLines", "weeklyAtEnd", "continuations",
+    "prodLines", "weeklyAtEnd", "continuations", "inPassing",
 }
 
 BATCH_PHASES = {"building", "final-review", "fixing", "delivering", "closing", "delivered", "paused"}

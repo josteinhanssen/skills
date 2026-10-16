@@ -7,7 +7,7 @@ Writes the project profile and installs the role agents. Run once per workspace,
 Look first; ask only what the workspace cannot tell you.
 
 - An existing `docs/agents/delivery-profile.md`: carry every fact over. Drop what the new flow has no use for: spec roots, plan and spec rulings, the volume threshold, grants, lock directories, exclusive resources, the delivery log path, the external review tool, the UI hook.
-- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names, whether the risk labels exist, and the tools that move an issue, comment and create one: the server that offers them and each tool's own name (`save_issue`). A claude.ai connector's full tool names carry an id that differs between Claude accounts, so record the full names as the ones last seen, not the only ones.
+- Tracker: `docs/agents/issue-tracker.md`, the MCP servers in the session, or files only. Its state names, including the ready state where intake finds tickets to build (added tickets are filed there), whether the risk labels exist, and the tools that move an issue, comment, create one and search open issues: the server that offers them and each tool's own name (`save_issue`). A claude.ai connector's full tool names carry an id that differs between Claude accounts, so record the full names as the ones last seen, not the only ones.
 - Repositories: every git repository in the workspace, its `origin` host, and which CLI is signed in (`az repos`, `gh`).
 - Branches: the default branch, any long-lived branch the current work integrates into (CLAUDE.md, AGENTS.md, recent PR targets), branch policies and required builds, and which merge types the integration branch's policy allows (a batch PR wants a merge commit; squash-only is recorded as such).
 - Deploy: pipeline definitions, whether a merge deploys by itself or runs are queued by hand, after-deploy steps.
@@ -33,12 +33,12 @@ Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner,
 
 A workflow spawns only the agents its session has registered, and a running session may not see agents installed after it started. After installing or changing them, start `/deliver` in a new session. The frontmatter's `model` and `effort` are each role's defaults, which `scripts/workflow.py render` reads; keep them as the templates have them. A workspace that wants other models or efforts sets them in the profile's Agents table, which a later setup carries over, and never in these files, which a later setup overwrites. Run `scripts/workflow.py settings` from the workspace root to check the table: it prints what each role runs on and exits 1 on a role, model or effort it can't use.
 
-## 5. Check the user's settings
+## 5. Check the settings
 
-Read `~/.claude/settings.json`. Recommend, and set only with the user's yes:
+Read `~/.claude/settings.json` and the workspace's `.claude/settings.local.json`. Recommend, and set only with the user's yes:
 
-- `autoCompactWindow: 300000`, so no session or agent drags more than 300k tokens of context through every call;
-- `autoContinueAtUsageLimit: true`, so a batch waits out a 5-hour limit and continues on its own.
+- `autoCompactWindow: 500000` in the workspace's `.claude/settings.local.json`, so a final reviewer reads a full batch without compacting (ADR 0004). A workflow agent ignores its frontmatter, so the workspace is the narrowest place this works, and the orchestrator gets the same window. Leave the user setting as it is: it still caps every other workspace. Merge the key into the file and keep everything else in it. A session started before the file existed may not load it, so the next `/deliver` starts in a new session;
+- `autoContinueAtUsageLimit: true` in the user settings, so a batch waits out a 5-hour limit and continues on its own.
 
 ## 6. The state directory
 

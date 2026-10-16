@@ -16,13 +16,33 @@ _Avoid_: risk flag, sensitive area
 The implementer's answers, in its commit message, to the questions its ticket's risk tags raise and to the three it always answers (inputs, existing paths, reuse); the correctness reviewer checks each one against the code.
 _Avoid_: self-review, checklist
 
+**In scope**:
+Work the ADR's outcome needs, or that sits in code the grilling's tickets change or call directly. Added tickets don't widen it. Everything else is out of scope, however close it sits.
+_Avoid_: in the batch, related, adjacent
+
+**In-passing fix**:
+An in-scope defect outside its ticket's own work that the implementer fixes on its ticket branch, test first, and lists in its commit for the final review to read.
+_Avoid_: drive-by fix, out-of-scope note
+
+**Added ticket**:
+A ticket the run creates itself for in-scope work too big for an in-passing fix or the fix round, written from what the agent that found it reported, linked to the ADR, put through intake like the others and built in a later batch.
+_Avoid_: follow-up, spin-off
+
+**Follow-up**:
+A ticket in the tracker's backlog for work that is out of scope, or that only a person can do or decide; the run never builds it, and one that needs a person is assigned to the user.
+_Avoid_: TODO, tech-debt ticket
+
 **Carry list**:
-The batch's list of what it has to act on that no diff shows: follow-ups from a handoff, the grilling or an earlier batch, and out-of-scope notes from implementers. Each item names a ticket or `outside`, and is resolved, filed or dropped before delivery.
+The batch's list of what it has to act on that no diff shows: items a handoff, the grilling or an earlier batch left for this work, and what implementers found but didn't fix. Each item names a ticket or `outside`, and before delivery it is resolved, made a finding, made an added ticket, filed as a follow-up or dropped.
 _Avoid_: backlog, notes, TODO list
 
 **Batch**:
 The tickets delivered together through one batch branch and one final review.
 _Avoid_: wave, release
+
+**Run**:
+One `/deliver` invocation, from intake until the last queued ticket is delivered or the weekly cap stops it; it may deliver several batches, and tickets it doesn't reach wait for a later run.
+_Avoid_: session, deliver session
 
 **Delivered**:
 Merged to the integration branch and running in the environment that branch deploys to, when it deploys anywhere.
@@ -45,7 +65,7 @@ The review of a whole batch on its batch branch by the correctness reviewer and 
 _Avoid_: gate, PR review
 
 **Finding**:
-A defect the final review has verified, with a severity.
+An in-scope defect the final review has verified, with a severity; the fixer fixes it whether or not the batch wrote that code. An out-of-scope defect is a follow-up, not a finding.
 _Avoid_: flag, issue
 
 ## Roles
