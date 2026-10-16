@@ -4,6 +4,7 @@
 Usage:
   cost.py --batch <slug> [--session-dir <dir>] [--session-jsonl <file>] [--state .deliver/state.json]
           [--markdown] [--summary-row] [--summary-header]
+  cost.py --summary-header
 
 Rows: per ticket "implement" (tickets[id].agent) and, for batches before ADR 0002, "ticket review" (tickets[id].reviewer);
 batch "final review" (batch.reviewers plus batch.confirm); "fix" (batch.fixer); "tracker" (batch.clerks); each id key may hold
@@ -29,15 +30,25 @@ The opus-eq column further weights each message by a factor read from its own mo
 against Opus 5.5's (Haiku 5.5 0.025, or 0.125 on a prompt over 100K tokens; older Haiku 0.25;
 sonnet 0.5; opus 1; fable 2.5; unknown 1), so mixed-model batches compare on one scale.
 
+Each row's peak is the largest prompt any of its agents sent in one call (input, cache reads and
+cache writes), which is how close it came to its compact window. --markdown and the JSON output
+also give the correctness reviewer's peak on its own: the agents labelled `correctness` in
+batch.reviewers' runs (the `correctness` id in batches before workflows), continuations included,
+confirm passes not. ADR 0004 watches it against the batch bound.
+
 --summary-row prints one markdown row for `.deliver/costs.md`:
-  | <YYYY-MM-DD> | <slug> | <tickets> | <weighted total, M> | <weighted per ticket, M> | <opus-eq per ticket, M> | <weekly % per ticket or n/a> |
+  | <YYYY-MM-DD> | <slug> | <tickets> | <weighted total, M> | <weighted per ticket, M> | <opus-eq per ticket, M> | <weekly % per ticket or n/a> | <follow-ups per ticket or n/a> |
 The slug cell names every role that ran off its default model or effort (`ate-488-b6 (implementer
 sonnet medium)`), from `workflow.py settings` run in this directory, so a row is averaged only with
 rows that ran the same settings.
 Weekly % per ticket is (batch.weeklyAtEnd - batch.weeklyAtStart) / tickets, falling back to the
 latest ticket's weeklyAtEnd when the batch has none; "n/a" without a start and an end. Plan usage
-reads in whole percents, so per-ticket readings rarely move; the batch-level end is the one that counts. --summary-header prints that row's header (combine with --summary-row
-for a ready-to-append block; use --summary-header alone once, ahead of the file's first row).
+reads in whole percents, so per-ticket readings rarely move; the batch-level end is the one that counts.
+The reading covers every session on the account over those days, not this batch alone, and the
+header says so. Follow-ups per ticket is len(batch.followUps) / tickets; "n/a" when the batch has
+no followUps key. --summary-header prints that row's header and needs no batch (combine with
+--summary-row for a ready-to-append block; alone, it prints the header to start the file with or
+to replace an older header with, since rows written before a column existed show it blank).
 """
 from __future__ import annotations
 
@@ -72,13 +83,14 @@ def model_factor(model_id: str | None, prompt_tokens: int) -> float:
 
 
 def blank_totals() -> dict:
-    return {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "turns": 0, "opus_eq": 0.0}
+    return {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "turns": 0, "opus_eq": 0.0, "peak": 0}
 
 
 def merge_into(target: dict, totals: dict) -> None:
     for key in ("input", "cache_read", "cache_write", "output", "turns"):
         target[key] += totals.get(key, 0)
     target["opus_eq"] += totals.get("opus_eq", 0.0)
+    target["peak"] = max(target["peak"], totals.get("peak", 0))
 
 
 def usage_of_file(path: Path, window: tuple[str | None, str | None] = (None, None)) -> dict:
@@ -117,6 +129,7 @@ def usage_of_file(path: Path, window: tuple[str | None, str | None] = (None, Non
             totals["cache_write"] += cwrite
             totals["output"] += out
             totals["turns"] += 1
+            totals["peak"] = max(totals["peak"], inp + cread + cwrite)
             model_id = (message or {}).get("model") if isinstance(message, dict) else None
             msg_weighted = inp * WEIGHTS["input"] + cread * WEIGHTS["cache_read"] + cwrite * WEIGHTS["cache_write"] + out * WEIGHTS["output"]
             totals["opus_eq"] += msg_weighted * model_factor(model_id, inp + cread + cwrite)
@@ -169,6 +182,20 @@ def build_mapping(state: dict, runs: dict[str, list[str]] | None = None) -> dict
     return mapping
 
 
+def correctness_agents(state: dict, labels: dict[str, dict[str, str]]) -> list[str]:
+    """The correctness reviewer's agent ids: the agents labelled `correctness` in each run on
+    batch.reviewers, or the map's `correctness` id in batches before workflows."""
+    reviewers = state.get("batch", {}).get("reviewers")
+    if isinstance(reviewers, dict):
+        return agent_ids(reviewers.get("correctness"))
+    return [
+        agent_id
+        for run in agent_ids(reviewers)
+        for agent_id, label in labels.get(run, {}).items()
+        if label == "correctness"
+    ]
+
+
 def row_order(state: dict, extra_rows: list[str]) -> list[str]:
     order = []
     for tid in state.get("tickets", {}):
@@ -180,8 +207,11 @@ def row_order(state: dict, extra_rows: list[str]) -> list[str]:
 
 
 def summary_header() -> str:
-    header = "| Date | Slug | Tickets | Weighted (M) | Weighted/ticket (M) | Opus-eq/ticket (M) | Weekly %/ticket |"
-    sep = "|---|---|---|---|---|---|---|"
+    header = (
+        "| Date | Slug | Tickets | Weighted (M) | Weighted/ticket (M) | Opus-eq/ticket (M) "
+        "| Weekly %/ticket during batch (all sessions) | Follow-ups/ticket |"
+    )
+    sep = "|---|---|---|---|---|---|---|---|"
     return f"{header}\n{sep}"
 
 
@@ -208,10 +238,12 @@ def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict], stat
         weekly_pct = f"{(weekly_at_end - weekly_at_start) / n:.2f}%"
     else:
         weekly_pct = "n/a"
+    follow_ups = batch.get("followUps")
+    follow_ups_per_ticket = f"{len(follow_ups) / n:.2f}" if n and isinstance(follow_ups, list) else "n/a"
 
     return (
         f"| {date} | {slug}{f' ({moved})' if moved else ''} | {n} | {weighted_m:.2f} | "
-        f"{weighted_per_ticket_m:.2f} | {opus_per_ticket_m:.2f} | {weekly_pct} |"
+        f"{weighted_per_ticket_m:.2f} | {opus_per_ticket_m:.2f} | {weekly_pct} | {follow_ups_per_ticket} |"
     )
 
 
@@ -229,10 +261,10 @@ def agent_transcripts(session_dir: Path) -> dict[str, Path]:
     return found
 
 
-def workflow_runs(session_dir: Path) -> dict[str, list[str]]:
-    """Agent ids per workflow run id, from each run's journal in the session directory."""
+def workflow_runs(session_dir: Path) -> dict[str, dict[str, str]]:
+    """Each workflow run's agents, agent id -> label, from the run journals in the session directory."""
     return {
-        journal.parent.name: [a["agentId"] for a in run_agents(journal.parent) if a["agentId"]]
+        journal.parent.name: {a["agentId"]: a["label"] for a in run_agents(journal.parent) if a["agentId"]}
         for journal in sorted((session_dir / "subagents" / "workflows").glob("*/journal.jsonl"))
     }
 
@@ -252,7 +284,7 @@ def find_session_dir(state: dict) -> Path | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--batch", required=True)
+    parser.add_argument("--batch")
     parser.add_argument("--session-dir")
     parser.add_argument("--session-jsonl", help="the orchestrator's own transcript; default batch.sessionJsonl")
     parser.add_argument("--state", default=".deliver/state.json")
@@ -260,6 +292,11 @@ def main() -> None:
     parser.add_argument("--summary-row", action="store_true")
     parser.add_argument("--summary-header", action="store_true")
     args = parser.parse_args()
+    if args.summary_header and not args.summary_row:
+        print(summary_header())
+        return
+    if not args.batch:
+        parser.error("--batch is required, except with --summary-header alone")
 
     state = load_state(Path(args.state))
     batch = state.get("batch", {})
@@ -273,11 +310,13 @@ def main() -> None:
         sys.exit(f"no sub-agent transcripts under {session_dir} (looked in subagents/ and tasks/)")
     window = (batch.get("startedAt"), batch.get("closedAt"))
 
-    runs = workflow_runs(Path(session_dir))
+    labels = workflow_runs(Path(session_dir))
+    runs = {run: list(agents) for run, agents in labels.items()}
     for one_id in [i for i in build_mapping(state, runs) if i.startswith("wf_")]:
         run_dir = find_run_dir(one_id)  # a run another session launched before this one claimed the batch
         if run_dir:
-            runs[one_id] = [a["agentId"] for a in run_agents(run_dir) if a["agentId"]]
+            labels[one_id] = {a["agentId"]: a["label"] for a in run_agents(run_dir) if a["agentId"]}
+            runs[one_id] = list(labels[one_id])
             for path in sorted(run_dir.glob("agent-*.jsonl")):
                 transcripts.setdefault(path.stem.removeprefix("agent-"), path)
         else:
@@ -285,6 +324,7 @@ def main() -> None:
     mapping = build_mapping(state, runs)
     rows_totals: dict[str, dict] = defaultdict(blank_totals)
     row_agents: dict[str, list[str]] = defaultdict(list)
+    agent_peaks: dict[str, int] = {}
     unassigned_rows: list[str] = []
 
     for agent_id, output in sorted(transcripts.items()):
@@ -301,6 +341,7 @@ def main() -> None:
                 continue
         merge_into(rows_totals[row], totals)
         row_agents[row].append(agent_id)
+        agent_peaks[agent_id] = totals["peak"]
 
     jsonl = args.session_jsonl or batch.get("sessionJsonl")
     orchestrator = None
@@ -327,7 +368,10 @@ def main() -> None:
             "raw": raw(t),
             "weighted": round(weighted(t)),
             "opus_eq": round(t.get("opus_eq", 0.0)),
+            "peak": t["peak"],
         })
+    correctness_peaks = [agent_peaks[a] for a in correctness_agents(state, labels) if a in agent_peaks]
+    correctness_peak = max(correctness_peaks) if correctness_peaks else None
 
     if args.summary_header:
         print(summary_header())
@@ -337,16 +381,18 @@ def main() -> None:
         return
 
     if args.markdown:
-        print("| Row | Agent(s) | Raw | Weighted | Opus-eq |")
-        print("|---|---|---|---|---|")
+        print("| Row | Agent(s) | Raw | Weighted | Opus-eq | Peak context |")
+        print("|---|---|---|---|---|---|")
         for r in rows:
-            print(f"| {r['row']} | {r['agents']} | {r['raw']:,} | {r['weighted']:,} | {r['opus_eq']:,} |")
+            print(f"| {r['row']} | {r['agents']} | {r['raw']:,} | {r['weighted']:,} | {r['opus_eq']:,} | {r['peak'] // 1000}k |")
         total_raw = sum(r["raw"] for r in rows)
         total_weighted = sum(r["weighted"] for r in rows)
         total_opus = sum(r["opus_eq"] for r in rows)
         print(f"\nBatch total: raw {total_raw:,}  weighted {total_weighted:,}  opus-eq {total_opus:,}")
+        peak = f"{correctness_peak // 1000}k" if correctness_peak is not None else "n/a (no correctness reviewer found)"
+        print(f"Correctness reviewer peak context: {peak}")
     else:
-        print(json.dumps({"batch": args.batch, "rows": rows}, indent=2))
+        print(json.dumps({"batch": args.batch, "rows": rows, "correctnessPeak": correctness_peak}, indent=2))
 
 
 if __name__ == "__main__":

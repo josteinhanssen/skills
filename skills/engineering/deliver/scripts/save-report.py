@@ -2,8 +2,8 @@
 """Save a sub-agent's final message to a file, straight from its transcript.
 
 Usage:
-  save-report.py --agent <agent id> --out <path> [--heading "<prefix>"] [--session-dir <dir>]
-  save-report.py --run <workflow run id> --label <label> --out <path> [--heading "<prefix>"]
+  save-report.py --agent <agent id> --out <path> [--heading "<prefix>"] [--section "<heading>"] [--session-dir <dir>]
+  save-report.py --run <workflow run id> --label <label> --out <path> [--heading "<prefix>"] [--section "<heading>"]
 
 The final reviewers return their findings as their last message, because the harness refuses
 report files written by sub-agents. Copying that message into `findings-*.md` with a Write would
@@ -21,6 +21,11 @@ message with text. With --heading it is the last one of those whose text starts 
 such as "# Correctness findings". A message's text blocks are joined as they stand. Prints the
 path, the word count and the first line. Exit 1 when the transcript is missing or no message
 matches.
+
+With --section, such as "## Added tickets", only that section of the message is saved: its heading
+line and everything after it up to the next heading of the same or a higher level. Headings inside
+code fences don't count. Exit 1 when the message has no such section; for an agent that writes the
+section only when it has something in it, that means it had nothing.
 """
 from __future__ import annotations
 
@@ -93,6 +98,32 @@ def reports(path: Path) -> tuple[list[str], list[str]]:
     return handbacks, [text for text in joined if text]
 
 
+def section(text: str, heading: str) -> str | None:
+    """The part of text from the line that is exactly `heading` to the next heading at its level or higher."""
+    want = heading.strip()
+    level = len(want) - len(want.lstrip("#"))
+    found: list[str] | None = None
+    fence = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped[:3] in ("```", "~~~"):
+            if fence is None:
+                fence = stripped[:3]
+            elif stripped.startswith(fence) and not stripped.lstrip(fence[0]).strip():
+                fence = None
+        elif fence is None and stripped.startswith("#"):
+            hashes = len(stripped) - len(stripped.lstrip("#"))
+            if stripped[hashes:hashes + 1] in ("", " "):
+                if found is not None and hashes <= level:
+                    break
+                if found is None and stripped == want:
+                    found = [line]
+                    continue
+        if found is not None:
+            found.append(line)
+    return "\n".join(found).rstrip() if found else None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--agent")
@@ -100,10 +131,13 @@ def main() -> None:
     parser.add_argument("--label")
     parser.add_argument("--out", required=True)
     parser.add_argument("--heading", help="save the last message that starts with this text")
+    parser.add_argument("--section", help="save only the section of the message under this heading, e.g. '## Added tickets'")
     parser.add_argument("--session-dir")
     args = parser.parse_args()
     if bool(args.agent) == bool(args.run) or bool(args.run) != bool(args.label):
         parser.error("give --agent, or --run with --label")
+    if args.section is not None and not args.section.strip().startswith("#"):
+        parser.error("--section takes a Markdown heading, such as '## Added tickets'")
     if args.run:
         args.agent, transcript = agent_of_run(args.run, args.label)
         print(f"agent {args.agent}")
@@ -121,6 +155,10 @@ def main() -> None:
     if text is None:
         wanted = f"starting with {args.heading!r}" if args.heading else "with text"
         sys.exit(f"agent {args.agent} has no hand-back or message {wanted} ({transcript})")
+    if args.section:
+        text = section(text, args.section)
+        if text is None:
+            sys.exit(f"agent {args.agent}'s report has no {args.section.strip()!r} section; nothing saved")
     out = Path(args.out)
     replaced = " (replaced the existing file)" if out.exists() else ""
     out.parent.mkdir(parents=True, exist_ok=True)
