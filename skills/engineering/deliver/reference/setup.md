@@ -31,6 +31,8 @@ Fill `templates/delivery-profile.md` and write it to `docs/agents/delivery-profi
 
 Remove any old `deliver-*` agents from the project's `.claude/agents/` (planner, plan-reviewer, judge, implementer-escalation, reviewer-spec, reviewer-standards, ticket-reviewer). Copy the five templates from `templates/agents/`, keeping their frontmatter (`model`, `effort`, `tools`, `disallowedTools`). Replace each `{profile extract}` marker with the profile fields it names, and every `scripts/` reference with the absolute path of the installed skill's `scripts/` directory. Add no other project prose; the templates are the contract and the profile is the data.
 
+On a workspace whose agents exist already, `scripts/agents.py update` does this except for the Profile sections, which it keeps. It backs up the old files and prints the profile fields each template asks for, so check each Profile section against them. `scripts/agents.py check` shows whether the agents match the templates, and every run checks it at step 0.
+
 A workflow spawns only the agents its session has registered, and a running session may not see agents installed after it started. After installing or changing them, start `/deliver` in a new session. The frontmatter's `model` and `effort` are each role's defaults, which `scripts/workflow.py render` reads; keep them as the templates have them. A workspace that wants other models or efforts sets them in the profile's Agents table, which a later setup carries over, and never in these files, which a later setup overwrites. Run `scripts/workflow.py settings` from the workspace root to check the table: it prints what each role runs on and exits 1 on a role, model or effort it can't use.
 
 ## 5. Check the settings

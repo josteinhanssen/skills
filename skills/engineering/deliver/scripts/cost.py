@@ -38,15 +38,17 @@ confirm passes not. ADR 0004 watches it against the batch bound.
 
 --summary-row prints one markdown row for `.deliver/costs.md`:
   | <YYYY-MM-DD> | <slug> | <tickets> | <weighted total, M> | <weighted per ticket, M> | <opus-eq per ticket, M> | <weekly % per ticket or n/a> | <follow-ups per ticket or n/a> |
-The slug cell names every role that ran off its default model or effort (`ate-488-b6 (implementer
-sonnet medium)`), from `workflow.py settings` run in this directory, so a row is averaged only with
-rows that ran the same settings.
+Tickets counts the state's tickets except those still `queued`, which a later batch builds; every
+per-ticket figure divides by it. The slug cell names every role that ran off its default model or
+effort (`ate-488-b6 (implementer sonnet medium)`), from `workflow.py settings` run in this
+directory, so a row is averaged only with rows that ran the same settings.
 Weekly % per ticket is (batch.weeklyAtEnd - batch.weeklyAtStart) / tickets, falling back to the
 latest ticket's weeklyAtEnd when the batch has none; "n/a" without a start and an end. Plan usage
 reads in whole percents, so per-ticket readings rarely move; the batch-level end is the one that counts.
 The reading covers every session on the account over those days, not this batch alone, and the
-header says so. Follow-ups per ticket is len(batch.followUps) / tickets; "n/a" when the batch has
-no followUps key. --summary-header prints that row's header and needs no batch (combine with
+header says so. Follow-ups per ticket counts the ids in batch.followUps and batch.needsYou once
+each, since a batch may record a needs-you follow-up in either or both, and divides by tickets;
+"n/a" when the batch has no followUps key. --summary-header prints that row's header and needs no batch (combine with
 --summary-row for a ready-to-append block; alone, it prints the header to start the file with or
 to replace an older header with, since rows written before a column existed show it blank).
 """
@@ -220,7 +222,7 @@ def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict], stat
     slug = batch.get("slug", batch_slug)
     moved = changed(effective(Path(".claude/agents"), Path(PROFILE), state_path, slug))
     tickets = state.get("tickets", {})
-    n = len(tickets)
+    n = sum(1 for entry in tickets.values() if entry.get("phase") != "queued")
     weighted_total = sum(weighted(t) for t in rows_totals.values())
     opus_total = sum(t.get("opus_eq", 0.0) for t in rows_totals.values())
     date = (batch.get("closedAt") or batch.get("startedAt") or "")[:10]
@@ -239,7 +241,11 @@ def summary_row(state: dict, batch_slug: str, rows_totals: dict[str, dict], stat
     else:
         weekly_pct = "n/a"
     follow_ups = batch.get("followUps")
-    follow_ups_per_ticket = f"{len(follow_ups) / n:.2f}" if n and isinstance(follow_ups, list) else "n/a"
+    if n and isinstance(follow_ups, list):
+        filed = {str(i) for i in follow_ups} | {str(i) for i in batch.get("needsYou") or []}
+        follow_ups_per_ticket = f"{len(filed) / n:.2f}"
+    else:
+        follow_ups_per_ticket = "n/a"
 
     return (
         f"| {date} | {slug}{f' ({moved})' if moved else ''} | {n} | {weighted_m:.2f} | "

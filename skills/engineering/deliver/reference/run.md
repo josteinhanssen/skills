@@ -34,6 +34,12 @@ Run `scripts/state.py show`. With no open batch, start at step 1.
 
 Then, starting or resuming, load the tracker's tools with ToolSearch: the write and search tools the profile names and the ones you read with. A claude.ai connector's tool names carry an id that differs between Claude accounts (`mcp__<id>__save_issue`), so when the profile's names aren't found, search for the tools' own names (`save_issue`). If one server offers them all, use its full names for this run and in every clerk brief, update the profile's Write tools line and the clerk agent's Profile section to them, and tell the user. If none does, stop: the tracker isn't connected to this account, and only the user can connect it. The user may instead choose to run with the tracker offline (below).
 
+Then, starting or resuming, check the role agents with `scripts/agents.py check`. It exits 1 when an agent in `.claude/agents/` no longer matches the installed skill's template. That happens when the skill was updated and the workspace's agents weren't, and the run would then follow this playbook with agents written for an older one. Tell the user which roles differ and ask once whether to update them.
+
+- On a yes, run `scripts/agents.py update`. It rewrites each agent above its Profile section, keeps the section, backs up the old files, and prints the profile fields each template now asks for. Add any field an agent's Profile section or the profile lacks, as setup would, and tell the user. A session may spawn only the agents it registered when it started, so a new run stops here and asks the user to start `/deliver` again in a new session. An open batch carries on in this session with whichever agents it gets.
+- On a no, go on, and say in the output at the end that the agents were out of date.
+- A missing agent, or one with no Profile section, needs `/deliver setup`. Stop and say so.
+
 An open batch belongs to the session that started it, and `show` prints that owner. If the owner is another session, or none is recorded, that session may still be running the batch, for example watching a deploy. Ask the user once whether it has stopped. Only on a yes, run `scripts/state.py batch claim` and resume. Otherwise leave the batch alone; `state.py` refuses this session's writes to it anyway.
 
 Resuming:
@@ -210,6 +216,7 @@ Stop and ask the user only for:
 - an agent that fails again after its continuation, or whose role agent this session hasn't registered (Liveness);
 - a fixer's BLOCKED, or a Blocking finding from a confirm pass (step 6);
 - a vote or PR completion the permission check refuses (step 7.3);
+- role agents that are missing or differ from the installed skill's templates (step 0);
 - a batch another session owns (step 0) or is closing (step 7.6);
 - the weekly cap from step 1.
 

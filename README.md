@@ -57,6 +57,8 @@ The session stops for the user only for a product or scope question, anything pa
 
 The models and efforts above are the defaults, set in each role agent's frontmatter. The profile's Agents table changes them for a workspace, and `--model <role>=<model>` and `--effort <role>=<effort>` change them for one run. `scripts/workflow.py settings` shows what each role runs on and where each value came from, and the cost row of a batch that ran a role off its default names that role. No role but the tracker clerk gets MCP servers, and none spawns another agent. Each runs in a workflow the orchestrator launches for its step (`deliver <slug> · ATE-543`, `deliver <slug> · final review`), which shows its agents, with their models, in the background tasks. A workflow agent can't be resumed, so going back to one means a continuation: a fresh agent of the same role with the earlier brief, its worktree as it stands, and either one thing to do or the rest of the work. The clerk exists so that the whole issues a tracker echoes back after each write land in a throwaway Haiku context instead of the orchestrator's. The quality reviewer's bar covers reuse, size, module depth, named smells and error handling that hides failures. It applies whether or not a repository documents standards, and "the existing code does it this way" is never a defence.
 
+Setup copies the role agents into each workspace, so a skill update doesn't reach them on its own. Every run starts with `scripts/agents.py check`, which compares them with the installed templates, and `update` rewrites the ones that differ and keeps each one's Profile section. Three MemoryPage batches ran the ADR 0004 playbook with the agents from before it, and none of their implementers fixed anything in passing.
+
 ### Cost controls
 
 - `autoCompactWindow: 500000` in each deliver workspace's `.claude/settings.local.json` lets a final reviewer read a full batch without compacting (ADR 0004). The user setting of 300000 still caps every other workspace.
@@ -174,5 +176,5 @@ skills/engineering/deliver/
   reference/               run, status and setup playbooks
   templates/               the profile, the four role agents and the tracker clerk
   workflows/               the workflow script every spawn point renders from
-  scripts/                 state file, workflow renderer, ticket merge, merge verification, sweep, cost, report saver, quiet runner
+  scripts/                 state file, workflow renderer, agent check, ticket merge, merge verification, sweep, cost, report saver, quiet runner
 ```
